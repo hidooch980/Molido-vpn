@@ -12,7 +12,7 @@ object ConnectionStateMachine {
                     ConnectionState.Preparing
                 } else current
 
-            ConnectionEvent.PermissionGranted ->
+            is ConnectionEvent.PermissionGranted ->
                 if (current is ConnectionState.Preparing) ConnectionState.Connecting(event.engineId)
                 else current
 
