@@ -293,6 +293,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 when (selectedTab) {
                     0 -> ConnectTab(
                         strings = strings, connectionState = connectionState, diagnostics = diagnostics,
+                        killSwitchEnabled = killSwitchEnabled,
                         selectedEngine = selectedEngineId,
                         onSelectEngine = { viewModel.setSelectedEngine(it) },
                         onConnect = { viewModel.onConnectClicked(context) },
@@ -347,6 +348,7 @@ fun ConnectTab(
     strings: AppStrings,
     connectionState: ConnectionState,
     diagnostics: ConnectionDiagnostics,
+    killSwitchEnabled: Boolean,
     selectedEngine: String,
     onSelectEngine: (String) -> Unit,
     onConnect: () -> Unit,
@@ -441,7 +443,7 @@ fun ConnectTab(
                     Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
                     DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
-                    DashboardSecurityRow("Kill Switch", "وضعیت تنظیمات: ${if (isVerified) "فعال‌سازی/آزمون لازم" else "وابسته به تنظیمات"}", killSwitch = false)
+                    DashboardSecurityRow("Kill Switch", if (killSwitchEnabled) "تنظیم روشن است؛ آزمون عملکرد لازم است" else "تنظیم خاموش است", needsTest = true)
                 }
             }
         }
