@@ -69,12 +69,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             xrayAdapter.id to xrayAdapter,
             warpAdapter.id to warpAdapter
         ),
-        onVpnInterfaceRequested = { engineId, config ->
-            val context = getApplication<Application>()
-            val configText = String(config.opaquePayload, Charsets.UTF_8)
-            MolidoVpnService.startService(context, engineId, configText)
-            true
-        },
+        // Fail closed: the current app service creates a bare TUN but has no
+        // integrated packet-forwarding backend. Never treat that as a usable VPN.
+        onVpnInterfaceRequested = { _, _ -> false },
         onVpnInterfaceTornDown = {
             val context = getApplication<Application>()
             MolidoVpnService.stopService(context)
