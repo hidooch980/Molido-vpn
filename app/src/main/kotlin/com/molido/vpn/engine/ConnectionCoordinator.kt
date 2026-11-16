@@ -1,8 +1,6 @@
 package com.molido.vpn.engine
 
 import com.molido.vpn.verifier.TrafficVerifier
-import com.molido.vpn.engine.EngineRuntimeCatalog
-import com.molido.vpn.engine.EngineReadiness
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +22,7 @@ class ConnectionCoordinator(
     private val scope: CoroutineScope,
     private val trafficVerifier: TrafficVerifier,
     private val adapters: Map<String, EngineAdapter>,
-    private val onVpnInterfaceRequested: suspend (engineId: String, config: EngineConfiguration) -> Boolean = { _, _ -> true },
+    private val onVpnInterfaceRequested: suspend (engineId: String, config: EngineConfiguration) -> Boolean = { _, _ -> false },
     private val onVpnInterfaceTornDown: suspend () -> Unit = {},
     private val isEngineProductionReady: (String) -> Boolean = { engineId ->
         EngineRuntimeCatalog.find(engineId)?.let { it.selectable && it.readiness == EngineReadiness.PRODUCTION } == true
