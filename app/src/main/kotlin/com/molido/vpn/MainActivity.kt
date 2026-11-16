@@ -37,6 +37,10 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -58,6 +62,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -99,6 +108,7 @@ import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
 import com.molido.vpn.ui.VpnViewModel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -138,10 +148,11 @@ fun MolidoVpnTheme(content: @Composable () -> Unit) {
 fun MainAppScreen(viewModel: VpnViewModel) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     val language by viewModel.language.collectAsState()
     val strings = Localization.get(language)
-
     val connectionState by viewModel.connectionState.collectAsState()
     val diagnostics by viewModel.diagnostics.collectAsState()
     val selectedEngineId by viewModel.selectedEngineId.collectAsState()
@@ -155,9 +166,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        viewModel.onPermissionResult(result.resultCode == Activity.RESULT_OK)
-    }
+    ) { result -> viewModel.onPermissionResult(result.resultCode == Activity.RESULT_OK) }
 
     LaunchedEffect(Unit) {
         viewModel.effects.collectLatest { effect ->
@@ -168,112 +177,168 @@ fun MainAppScreen(viewModel: VpnViewModel) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(strings.appName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(
-                            strings.appSubtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = true,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = Color(0xFF07131A),
+                drawerContentColor = Color(0xFFE8F7F8)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp))
+                                .background(Color(0xFF073B42)).border(1.dp, Color(0xFF20D6D2), RoundedCornerShape(15.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.VpnLock, contentDescription = null, tint = Color(0xFF36E0D5), modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("MOLIDO", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, letterSpacing = 2.sp)
+                            Text("VPN  •  AI SECURITY", color = Color(0xFF48CFC8), fontSize = 10.sp, letterSpacing = 1.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(if (language == AppLanguage.PERSIAN) "منوی اصلی" else "MAIN MENU", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "داشبورد" else "Dashboard", fontWeight = FontWeight.SemiBold) },
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40),
+                            selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White,
+                            unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
                         )
-                    }
-                },
-                actions = {
-                    // Quick language toggle
-                    IconButton(onClick = {
-                        val nextLang = if (language == AppLanguage.PERSIAN) AppLanguage.ENGLISH else AppLanguage.PERSIAN
-                        viewModel.setLanguage(nextLang)
-                    }) {
-                        Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF38BDF8))
-                    }
-                    IconButton(onClick = { viewModel.refreshServers() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.VpnLock, contentDescription = strings.tabConnect) },
-                    label = { Text(strings.tabConnect) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Storage, contentDescription = strings.tabServers) },
-                    label = { Text(strings.tabServers) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Security, contentDescription = strings.tabSecurity) },
-                    label = { Text(strings.tabSecurity) }
-                )
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            when (selectedTab) {
-                0 -> ConnectTab(
-                    strings = strings,
-                    connectionState = connectionState,
-                    diagnostics = diagnostics,
-                    selectedEngine = selectedEngineId,
-                    onSelectEngine = { viewModel.setSelectedEngine(it) },
-                    onConnect = { viewModel.onConnectClicked(context) },
-                    onDisconnect = { viewModel.onDisconnectClicked() }
-                )
-                1 -> ServersTab(
-                    strings = strings,
-                    servers = servers,
-                    isFetching = isFetchingCommunity,
-                    onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
-                    onSelectServer = { viewModel.selectServer(it) },
-                    onImportClipboard = {
-                        val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                        if (text.isNotBlank()) {
-                            viewModel.importFromRawText(text)
-                        } else {
-                            Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-                2 -> SecuritySettingsTab(
-                    strings = strings,
-                    currentLanguage = language,
-                    onSelectLanguage = { viewModel.setLanguage(it) },
-                    killSwitch = killSwitchEnabled,
-                    onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
-                    onOpenAndroidSettings = {
-                        try {
-                            context.startActivity(KillSwitchManager.createVpnSettingsIntent())
-                        } catch (_: Exception) {
-                            Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    selectedDns = selectedDns,
-                    onSelectDns = { viewModel.setDnsProvider(it) },
-                    splitApps = splitApps,
-                    installedApps = installedApps,
-                    onToggleApp = { viewModel.toggleAppExclusion(it) },
-                    activeConfigText = activeConfigText,
-                    onUpdateConfig = { viewModel.updateActiveConfig(it) }
-                )
+                    )
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "سرورها و پروفایل‌ها" else "Servers & Profiles") },
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
+                        )
+                    )
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "امنیت و تنظیمات" else "Security & Settings") },
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
+                        )
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
+                    DrawerPlannedItem(Icons.Default.AutoAwesome, if (language == AppLanguage.PERSIAN) "مسیریابی هوشمند AI" else "AI Smart Routing")
+                    DrawerPlannedItem(Icons.Default.SystemUpdate, if (language == AppLanguage.PERSIAN) "به‌روزرسانی هسته‌ها" else "Core Updates")
+                    Spacer(Modifier.height(20.dp))
+                    Text("PREMIUM • PRIVATE • SECURE", color = Color(0xFF3ABFB9), fontSize = 10.sp, letterSpacing = 1.sp)
+                }
             }
         }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = if (language == AppLanguage.PERSIAN) "باز کردن منو" else "Open menu", tint = Color(0xFF43DCD3))
+                        }
+                    },
+                    title = {
+                        Column {
+                            Text(
+                                when (selectedTab) {
+                                    1 -> if (language == AppLanguage.PERSIAN) "سرورها" else "Servers"
+                                    2 -> if (language == AppLanguage.PERSIAN) "امنیت" else "Security"
+                                    else -> "MolidoVPN AI"
+                                },
+                                fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color.White
+                            )
+                            Text(
+                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی، کنترل هوشمند" else "Private connection • intelligent control",
+                                style = MaterialTheme.typography.bodySmall, color = Color(0xFF48CFC8), fontSize = 10.sp
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            val nextLang = if (language == AppLanguage.PERSIAN) AppLanguage.ENGLISH else AppLanguage.PERSIAN
+                            viewModel.setLanguage(nextLang)
+                        }) { Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF43DCD3)) }
+                        IconButton(onClick = { viewModel.refreshServers() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFFB4CBCD))
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF07131A))
+                )
+            },
+            containerColor = Color(0xFF07131A)
+        ) { paddingValues ->
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                when (selectedTab) {
+                    0 -> ConnectTab(
+                        strings = strings, connectionState = connectionState, diagnostics = diagnostics,
+                        selectedEngine = selectedEngineId,
+                        onSelectEngine = { viewModel.setSelectedEngine(it) },
+                        onConnect = { viewModel.onConnectClicked(context) },
+                        onDisconnect = { viewModel.onDisconnectClicked() }
+                    )
+                    1 -> ServersTab(
+                        strings = strings, servers = servers, isFetching = isFetchingCommunity,
+                        onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
+                        onSelectServer = { viewModel.selectServer(it) },
+                        onImportClipboard = {
+                            val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                            if (text.isNotBlank()) viewModel.importFromRawText(text)
+                            else Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    2 -> SecuritySettingsTab(
+                        strings = strings, currentLanguage = language,
+                        onSelectLanguage = { viewModel.setLanguage(it) },
+                        killSwitch = killSwitchEnabled, onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
+                        onOpenAndroidSettings = {
+                            try { context.startActivity(KillSwitchManager.createVpnSettingsIntent()) }
+                            catch (_: Exception) { Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show() }
+                        },
+                        selectedDns = selectedDns, onSelectDns = { viewModel.setDnsProvider(it) },
+                        splitApps = splitApps, installedApps = installedApps,
+                        onToggleApp = { viewModel.toggleAppExclusion(it) },
+                        activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrawerPlannedItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF54777D), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(title, color = Color(0xFF78969B), fontSize = 13.sp)
+        Spacer(Modifier.weight(1f))
+        Text("SOON", color = Color(0xFF54777D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
