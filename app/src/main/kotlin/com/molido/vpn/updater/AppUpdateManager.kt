@@ -127,10 +127,10 @@ class AppUpdateManager(
     }
 
     fun requestInstall(apk: File): Result<Unit> = runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            check(context.packageManager.canRequestPackageInstalls()) {
-                throw InstallPermissionRequired()
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            throw InstallPermissionRequired()
         }
         val uri: Uri = FileProvider.getUriForFile(
             context,
