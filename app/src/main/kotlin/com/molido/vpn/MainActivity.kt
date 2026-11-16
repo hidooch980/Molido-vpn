@@ -126,6 +126,8 @@ fun MainScreen(viewModel: VpnViewModel) {
     val selectedEngineId by viewModel.selectedEngineId.collectAsState()
     val servers by viewModel.servers.collectAsState()
     val wireGuardConfigText by viewModel.wireGuardConfigText.collectAsState()
+    val updateStatus by viewModel.updateStatus.collectAsState()
+    val availableUpdate by viewModel.availableUpdate.collectAsState()
 
     var showConfigEditor by remember { mutableStateOf(false) }
     var selectedPage by remember { mutableStateOf("home") }
@@ -143,6 +145,7 @@ fun MainScreen(viewModel: VpnViewModel) {
             when (effect) {
                 is VpnUiEffect.RequestVpnPermission -> vpnPermissionLauncher.launch(effect.intent)
                 is VpnUiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
+                is VpnUiEffect.OpenSettings -> context.startActivity(effect.intent)
             }
         }
     }
@@ -302,6 +305,13 @@ fun MainScreen(viewModel: VpnViewModel) {
                 ) {
                     EngineSelector(selectedEngine = selectedEngineId, onSelect = { viewModel.setSelectedEngine(it) })
                     ConfigEditorCard(configText = wireGuardConfigText, onConfigChanged = { viewModel.updateWireGuardConfig(it) })
+                    UpdateCard(
+                        status = updateStatus,
+                        updateAvailable = availableUpdate != null,
+                        onCheck = { viewModel.checkForUpdates() },
+                        onDownload = { viewModel.downloadUpdate() },
+                        onInstall = { viewModel.installUpdate() }
+                    )
                 }
 
                 else -> Column(
@@ -313,6 +323,40 @@ fun MainScreen(viewModel: VpnViewModel) {
                     Text("Only real, verified connection information is displayed. No mock server list or simulated IP is used.", color = Color(0xFF94A3B8))
                     Text("Privacy data flows: docs/privacy-data-flows.md", color = Color(0xFF38BDF8))
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun UpdateCard(
+    status: String,
+    updateAvailable: Boolean,
+    onCheck: () -> Unit,
+    onDownload: () -> Unit,
+    onInstall: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Automatic Updates", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(status, color = Color(0xFFCBD5E1), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "VPN engine binaries are bundled with the signed app release and update together. Separate executable core downloads are disabled until each engine has an independently audited signed-update format.",
+                color = Color(0xFF94A3B8),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onCheck) { Text("Check") }
+                if (updateAvailable) Button(onClick = onDownload) { Text("Download & Verify") }
+                Button(onClick = onInstall, enabled = !updateAvailable) { Text("Install verified APK") }
             }
         }
     }
