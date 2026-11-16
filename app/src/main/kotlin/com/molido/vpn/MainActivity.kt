@@ -128,6 +128,7 @@ fun MainScreen(viewModel: VpnViewModel) {
     val wireGuardConfigText by viewModel.wireGuardConfigText.collectAsState()
     val updateStatus by viewModel.updateStatus.collectAsState()
     val availableUpdate by viewModel.availableUpdate.collectAsState()
+    val updateReady by viewModel.updateReady.collectAsState()
 
     var showConfigEditor by remember { mutableStateOf(false) }
     var selectedPage by remember { mutableStateOf("home") }
@@ -308,6 +309,7 @@ fun MainScreen(viewModel: VpnViewModel) {
                     UpdateCard(
                         status = updateStatus,
                         updateAvailable = availableUpdate != null,
+                        updateReady = updateReady,
                         onCheck = { viewModel.checkForUpdates() },
                         onDownload = { viewModel.downloadUpdate() },
                         onInstall = { viewModel.installUpdate() }
@@ -333,6 +335,7 @@ fun MainScreen(viewModel: VpnViewModel) {
 fun UpdateCard(
     status: String,
     updateAvailable: Boolean,
+    updateReady: Boolean,
     onCheck: () -> Unit,
     onDownload: () -> Unit,
     onInstall: () -> Unit
@@ -355,8 +358,8 @@ fun UpdateCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCheck) { Text("Check") }
-                if (updateAvailable) Button(onClick = onDownload) { Text("Download & Verify") }
-                Button(onClick = onInstall, enabled = !updateAvailable) { Text("Install verified APK") }
+                if (updateAvailable && !updateReady) Button(onClick = onDownload) { Text("Download & Verify") }
+                Button(onClick = onInstall, enabled = updateReady) { Text("Install verified APK") }
             }
         }
     }
