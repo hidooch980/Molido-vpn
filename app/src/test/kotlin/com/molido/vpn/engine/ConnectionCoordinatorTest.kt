@@ -1,7 +1,7 @@
 package com.molido.vpn.engine
 
-import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
-import com.molido.vpn.verifier.MockTrafficVerifier
+import com.molido.vpn.verifier.TrafficVerifier
+import com.molido.vpn.verifier.VerificationResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -11,70 +11,73 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionCoordinatorTest {
+    private class FakeSession : EngineSession {
+        override val engineId = "fake"
+    }
 
-    private val validConfig = """
-        [Interface]
-        PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
-        Address = 10.200.0.2/32
-        DNS = 1.1.1.1
-        MTU = 1420
+    private class FakeVerifier(private val result: VerificationResult) : TrafficVerifier {
+        override suspend fun verify(timeoutMillis: Long): VerificationResult = result
+    }
 
-        [Peer]
-        PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
-        Endpoint = 198.51.100.1:51820
-        AllowedIPs = 0.0.0.0/0
-    """.trimIndent()
+    private class FakeAdapter : EngineAdapter {
+        override val id = "fake"
+        override val displayName = "Test transport"
+        override val capabilities = EngineCapabilities(true, true, true, true, true, true)
+
+        override suspend fun validate(configuration: EngineConfiguration) =
+            if (configuration.opaquePayload.isNotEmpty()) ValidationResult.Valid
+            else ValidationResult.Invalid("EMPTY_PROFILE")
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            onEvent(EngineEvent.TransportReady)
+            return FakeSession()
+        }
+
+        override suspend fun disconnect(session: EngineSession) = Unit
+    }
 
     @Test
-    fun successfulConnectionMovesThroughFullVerificationToConnected() = runTest {
-        val mockVerifier = MockTrafficVerifier(simulatedSuccess = true, simulatedLatency = 35L)
-        val adapter = WireGuardEngineAdapter()
+    fun successfulConnectionRequiresVerifiedPublicEgress() = runTest {
+        val adapter = FakeAdapter()
         val coordinator = ConnectionCoordinator(
             scope = this,
-            trafficVerifier = mockVerifier,
+            trafficVerifier = FakeVerifier(VerificationResult(success = true, latencyMillis = 35L, egressIp = "203.0.113.7")),
             adapters = mapOf(adapter.id to adapter)
         )
-
-        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
-        coordinator.requestConnect("wireguard", config)
+        val config = EngineConfiguration(byteArrayOf(1))
+        coordinator.requestConnect("fake", config)
         advanceUntilIdle()
-
         assertEquals(ConnectionState.Preparing, coordinator.state.value)
 
-        coordinator.onVpnPermissionGranted("wireguard", config)
+        coordinator.onVpnPermissionGranted("fake", config)
         advanceUntilIdle()
 
         val state = coordinator.state.value
-        assertTrue("State should be Connected, but was: $state", state is ConnectionState.Connected)
-        val connected = state as ConnectionState.Connected
-        assertEquals("wireguard", connected.engineId)
-        assertEquals(35L, coordinator.diagnostics.value.lastLatencyMillis)
-
+        assertTrue("Expected Connected only after egress verification, got $state", state is ConnectionState.Connected)
+        assertEquals("fake", (state as ConnectionState.Connected).engineId)
+        assertEquals("203.0.113.7", coordinator.diagnostics.value.publicEgressIp)
         coordinator.disconnect()
         advanceUntilIdle()
         assertEquals(ConnectionState.Idle, coordinator.state.value)
     }
 
     @Test
-    fun failedVerificationFailsClosed() = runTest {
-        val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
-        val adapter = WireGuardEngineAdapter()
+    fun failedEgressVerificationFailsClosed() = runTest {
+        val adapter = FakeAdapter()
         val coordinator = ConnectionCoordinator(
             scope = this,
-            trafficVerifier = mockVerifier,
+            trafficVerifier = FakeVerifier(VerificationResult(success = false, errorMessage = "egress failure")),
             adapters = mapOf(adapter.id to adapter)
         )
-
-        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
-        coordinator.requestConnect("wireguard", config)
+        val config = EngineConfiguration(byteArrayOf(1))
+        coordinator.requestConnect("fake", config)
         advanceUntilIdle()
-
-        coordinator.onVpnPermissionGranted("wireguard", config)
+        coordinator.onVpnPermissionGranted("fake", config)
         advanceUntilIdle()
-
-        val state = coordinator.state.value
-        assertTrue("State should be Failed, but was: $state", state is ConnectionState.Failed)
-        val failed = state as ConnectionState.Failed
-        assertTrue(failed.reasonCode.contains("Egress test failed"))
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+        assertEquals(null, coordinator.diagnostics.value.publicEgressIp)
     }
 }

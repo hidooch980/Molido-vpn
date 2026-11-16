@@ -1,18 +1,30 @@
 package com.molido.vpn.engine.wireguard
 
+import android.content.Context
 import com.molido.vpn.engine.EngineAdapter
 import com.molido.vpn.engine.EngineCapabilities
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.EngineEvent
 import com.molido.vpn.engine.EngineSession
 import com.molido.vpn.engine.ValidationResult
+import com.wireguard.android.backend.Backend
+import com.wireguard.android.backend.GoBackend
+import com.wireguard.android.backend.Tunnel
+import com.wireguard.config.Config
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
-class WireGuardEngineAdapter : EngineAdapter {
+/**
+ * Production transport adapter backed by WireGuard's maintained Android tunnel library.
+ * GoBackend owns the VPN service/TUN and protects its own UDP sockets.
+ */
+class WireGuardEngineAdapter(context: Context) : EngineAdapter {
     override val id: String = "wireguard"
     override val displayName: String = "WireGuard"
 
-    override val capabilities: EngineCapabilities = EngineCapabilities(
+    override val capabilities = EngineCapabilities(
         supportsIpv4 = true,
         supportsIpv6 = true,
         supportsUdp = true,
@@ -21,62 +33,70 @@ class WireGuardEngineAdapter : EngineAdapter {
         supportsMtuConfiguration = true
     )
 
-    override suspend fun validate(configuration: EngineConfiguration): ValidationResult {
-        return try {
-            val configText = String(configuration.opaquePayload, Charsets.UTF_8)
-            WireGuardConfigParser.validate(configText)
-        } catch (e: Exception) {
-            ValidationResult.Invalid("Failed to decode configuration payload: ${e.message}")
+    private val backend: Backend = GoBackend(context.applicationContext)
+    private val backendLock = Any()
+
+    private fun parse(configuration: EngineConfiguration): Config {
+        require(configuration.opaquePayload.isNotEmpty()) { "WireGuard profile is empty" }
+        return ByteArrayInputStream(configuration.opaquePayload).use { stream ->
+            Config.parse(stream)
+        }.also { config ->
+            require(config.getPeers().isNotEmpty()) { "WireGuard profile has no peers" }
+            require(config.getInterface().getAddresses().isNotEmpty()) {
+                "WireGuard profile has no interface address"
+            }
         }
     }
 
-    override suspend fun connect(
-        configuration: EngineConfiguration,
-        protectSocket: (Int) -> Boolean,
-        onEvent: (EngineEvent) -> Unit
-    ): EngineSession {
-        val configText = String(configuration.opaquePayload, Charsets.UTF_8)
-        val parsedConfig = try {
-            WireGuardConfigParser.parse(configText)
-        } catch (e: Exception) {
-            onEvent(EngineEvent.Failed("Config error: ${e.message}", recoverable = false))
-            throw e
-        }
-
-        val session = WireGuardSession(
-            engineId = id,
-            config = parsedConfig,
-            onEvent = onEvent
-        )
-
-        // Signal that the engine transport has completed handshake and is ready for traffic verification
-        onEvent(EngineEvent.TransportReady)
-        return session
-    }
-
-    override suspend fun disconnect(session: EngineSession) {
-        if (session is WireGuardSession) {
-            session.terminate()
-        }
-    }
-
-    class WireGuardSession(
-        override val engineId: String,
-        val config: WireGuardConfig,
-        private val onEvent: (EngineEvent) -> Unit
-    ) : EngineSession {
-        private val active = AtomicBoolean(true)
-
-        fun updateStats(bytesIn: Long, bytesOut: Long) {
-            if (active.get()) {
-                onEvent(EngineEvent.Statistics(bytesIn, bytesOut))
+    override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+        withContext(Dispatchers.IO) {
+            try {
+                parse(configuration)
+                ValidationResult.Valid
+            } catch (_: Exception) {
+                ValidationResult.Invalid("INVALID_WIREGUARD_PROFILE")
             }
         }
 
-        fun terminate() {
-            active.set(false)
+    override suspend fun connect(
+        configuration: EngineConfiguration,
+        onEvent: (EngineEvent) -> Unit
+    ): EngineSession = withContext(Dispatchers.IO) {
+        val config = parse(configuration)
+        val tunnel = MolidoTunnel()
+        try {
+            synchronized(backendLock) {
+                val state = backend.setState(tunnel, Tunnel.State.UP, config)
+                check(state == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
+                    "WireGuard backend did not enter UP state"
+                }
+            }
+            val session = WireGuardSession(tunnel)
+            onEvent(EngineEvent.TransportReady)
+            session
+        } catch (error: Exception) {
+            onEvent(EngineEvent.Failed("WIREGUARD_BACKEND_START_FAILED", recoverable = true))
+            throw error
         }
+    }
 
-        val isActive: Boolean get() = active.get()
+    override suspend fun disconnect(session: EngineSession) = withContext(Dispatchers.IO) {
+        if (session !is WireGuardSession || !session.markStopped()) return@withContext
+        synchronized(backendLock) {
+            if (backend.getState(session.tunnel) == Tunnel.State.UP) {
+                backend.setState(session.tunnel, Tunnel.State.DOWN, null)
+            }
+        }
+    }
+
+    private class MolidoTunnel : Tunnel {
+        override fun getName(): String = "molido"
+        override fun onStateChange(newState: Tunnel.State) = Unit
+    }
+
+    private class WireGuardSession(val tunnel: MolidoTunnel) : EngineSession {
+        override val engineId: String = "wireguard"
+        private val stopped = AtomicBoolean(false)
+        fun markStopped(): Boolean = stopped.compareAndSet(false, true)
     }
 }

@@ -3,36 +3,45 @@
 ## Phase 0 — repository baseline
 - [x] Establish independent repository and product/security principles.
 - [x] Document architecture and engine feasibility gates.
-- [x] Add Android Gradle project skeleton and Compose app shell.
-- [x] Add CI workflow for a debug build.
-- [x] Run CI and resolve toolchain/build issues (added Gradle 8.13 wrapper and fixed CI execution).
+- [x] Add Android Gradle project and CI baseline.
 
-## Phase 1 — reliable VPN foundation
-- [x] Compose navigation, connection state and permission flow.
-- [x] Foreground Android VpnService with notification and lifecycle handling.
-- [x] TUN interface, routes, DNS policy, IPv4/IPv6 handling.
-- [x] Engine adapter contract, state machine, structured diagnostics.
-- [x] Connection verification and fail-safe disconnect behavior.
+## Phase 1 — fail-closed VPN foundation
+- [x] Add engine adapter contract and state machine.
+- [x] Integrate the official WireGuard Android tunnel library on the hardening branch.
+- [x] Remove fabricated default WireGuard credentials and synthetic server measurements.
+- [x] Replace probe-destination-as-egress reporting with HTTPS public-IP verification.
+- [ ] Verify dependency resolution, Kotlin/Java API compatibility, and all CI tests.
+- [ ] Verify service lifecycle, reconnect, process death, and network handover on physical Android devices.
+- [ ] Verify public IPv4 and IPv6 egress, DNS behavior, and lockdown/kill-switch behavior.
 
-## Phase 2 — first production engines
-- [x] WireGuard adapter and official-compatible configuration handling.
-- [ ] Xray adapter after dependency/license/security review.
-- [ ] AmneziaWG adapter after compatibility and licensing review.
-- [ ] Device tests: connect, reconnect, process death, network handover, DNS, IPv6, lockdown.
+## Phase 2 — production WireGuard
+- [ ] Add instrumentation tests using a controlled WireGuard endpoint.
+- [ ] Add real tunnel statistics and handshake freshness checks.
+- [ ] Add endpoint reachability and recovery handling without leaking private profile data.
+- [ ] Verify all supported ABIs and native library packaging.
+- [ ] Complete privacy, dependency, and license audits.
 
 ## Phase 3 — additional engines
-- [ ] Evaluate MASQUE/CONNECT-IP implementation and HTTP/3 stack.
-- [ ] Evaluate official WARP integration constraints.
-- [ ] Evaluate Psiphon SDK/API and redistribution terms.
-- [ ] Evaluate Tor integration, bridges, and DNS behavior.
-- [ ] Keep SHARD research-only until a verifiable implementation exists.
+- [ ] Xray-core: select exact supported protocols and audit upstream/dependencies.
+- [ ] AmneziaWG: verify compatible implementation and server configuration.
+- [ ] MASQUE/CONNECT-IP: verify maintained interoperable client stack.
+- [ ] WARP: only supported official integration.
+- [ ] Psiphon: verify SDK/API and redistribution terms.
+- [ ] Tor: verify maintained Android integration, DNS and bridge behavior.
+- [ ] SHARD remains research-only until a verifiable protocol and implementation exist.
 
-## Phase 4 — adaptive intelligence and product hardening
-- [ ] Deterministic baseline route scoring before any ML.
-- [ ] On-device adaptive scoring from privacy-minimized network measurements.
-- [ ] User controls, country/IP metadata, speed and stability history.
-- [ ] Split tunneling, per-app routing, safe update mechanism.
-- [ ] SBOM, dependency audit, release signing, reproducible build review.
+## Phase 4 — product UI and adaptive policy
+- [ ] Premium dashboard with truthful live connection state.
+- [ ] Public IP and approximate geolocation from a documented provider.
+- [ ] Real server catalogue and measured route ranking; no seeded/fabricated rows.
+- [ ] Adaptive selection based on measured latency, loss and stability.
+- [ ] Split tunneling, safe update mechanism, and multilingual UI.
+
+## Signing and release
+- [ ] Locate and securely verify the previously approved owner keystore.
+- [ ] Store signing material only in protected CI secrets or a secure local signing environment.
+- [ ] Build and verify a signed release without exposing private key material.
+- [ ] Produce SBOM, dependency/license report, vulnerability report, and reproducible-build evidence.
 
 ## Release gate
-No engine or security feature is marked production-ready until code review, license review, automated tests, and real Android device tests pass. A successful handshake alone is not proof of working traffic.
+No APK is delivered until all automated and real-device acceptance tests pass. A successful Gradle build or backend UP state alone is not proof of end-to-end VPN traffic.

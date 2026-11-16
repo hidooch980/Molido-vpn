@@ -1,21 +1,20 @@
 # Engine feasibility and release gates
 
-| Engine | Intended role | Integration assessment | Release gate |
+| Engine | Current implementation status | License / integration notes | Release gate |
 |---|---|---|---|
-| WireGuard | Fast modern tunnel | Preferred first engine; use official/maintained Android-compatible implementation | Verify upstream license, ABI packaging, key handling, IPv4/IPv6, DNS and reconnect |
-| Xray-core | Flexible proxy/tunnel family | Candidate; select exact supported protocols and maintained Android integration | Pin upstream version, audit transitive dependencies, confirm TUN routing and license notices |
-| AmneziaWG | WireGuard-derived obfuscation variant | Separate compatibility profile; not interchangeable with ordinary WireGuard peers | Confirm client implementation and server configuration compatibility; document upstream changes |
-| MASQUE / CONNECT-IP | HTTP/3-based IP proxy/tunnel | Research/integration candidate; support depends on a maintained CONNECT-IP client stack | Protocol interoperability, QUIC behavior, proxy/TUN integration, licensing and mobile battery tests |
-| Cloudflare WARP | Managed network tunnel | Do not assume a public reusable SDK or unrestricted API exists | Use only supported official integration and terms; no credential/API reverse engineering |
-| Psiphon | Circumvention network | Candidate subject to upstream SDK/API and distribution terms | Confirm supported embedding model, license, service availability and privacy behavior |
-| Tor | Anonymity network | Candidate; requires careful DNS and app-routing design | Use maintained Tor implementation; test bridges, DNS, stream isolation and platform constraints |
-| SHARD | Proposed multi-node path | Research only; the name alone does not identify a standard interoperable engine | Require a concrete protocol specification, maintained source, license, threat model and test vectors |
+| WireGuard | Official Android tunnel library integrated on hardening branch; device validation pending | com.wireguard.android:tunnel:1.0.20260102, Apache-2.0; native wireguard-go backend | Resolve/build, inspect merged manifest and ABIs, verify real traffic, DNS, IPv4/IPv6, reconnect and lockdown |
+| Xray-core | Not integrated | Select exact upstream release and protocol set; audit all transitive licenses | Pinned source, notices, TUN integration, device and security tests |
+| AmneziaWG | Not integrated | Must use a compatible maintained client and server profile; not interchangeable with vanilla WireGuard | Confirm protocol compatibility, source license, packet-path tests |
+| MASQUE / CONNECT-IP | Research | Requires a maintained HTTP/3 CONNECT-IP client stack | Interoperability, QUIC, TUN routing, battery and license review |
+| Cloudflare WARP | Research | Only supported official integration and terms; no reverse engineering or unsupported account APIs | Written compatibility and legal review |
+| Psiphon | Research | SDK/API and redistribution terms need verification | Maintained SDK, privacy review, device tests |
+| Tor | Research | Requires maintained Android integration and careful DNS/stream isolation | Bridge, DNS, IPv6, app-routing and device tests |
+| SHARD | Research only | No specific interoperable protocol implementation identified | Require protocol specification, maintained auditable source, license and test vectors |
 
 ## Status vocabulary
 - Planned: no implementation claim.
-- Research: feasibility or licensing is being investigated.
-- Integrated: adapter compiles and passes unit/integration tests.
-- Device-verified: real-device traffic, DNS, IPv6 and recovery tests pass.
+- Integrated: source dependency and adapter are wired; compilation and tests still required.
+- Device-verified: real-device tunnel and traffic tests pass.
 - Production: release security, license, performance and regression gates pass.
 
-Do not label an engine “available” based only on a UI entry, binary inclusion, successful process start, or handshake.
+Never label an engine available based only on a UI entry, process start, TUN creation, or handshake.
