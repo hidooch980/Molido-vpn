@@ -15,15 +15,14 @@ data class ConnectionDiagnostics(
     val lastLatencyMillis: Long? = null,
     val bytesIn: Long = 0,
     val bytesOut: Long = 0,
-    val activeEngineId: String? = null
+    val activeEngineId: String? = null,
+    val publicEgressIp: String? = null
 )
 
 class ConnectionCoordinator(
     private val scope: CoroutineScope,
     private val trafficVerifier: TrafficVerifier,
-    private val adapters: Map<String, EngineAdapter>,
-    private val onVpnInterfaceRequested: suspend (engineId: String, config: EngineConfiguration) -> Boolean = { _, _ -> true },
-    private val onVpnInterfaceTornDown: suspend () -> Unit = {}
+    private val adapters: Map<String, EngineAdapter>
 ) {
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -45,14 +44,13 @@ class ConnectionCoordinator(
                     dispatch(ConnectionEvent.Fail("Unknown engine: $engineId"))
                     return@withLock
                 }
-
-                val validation = adapter.validate(configuration)
-                if (validation is ValidationResult.Invalid) {
-                    dispatch(ConnectionEvent.Fail("Config validation failed: ${validation.reasonCode}"))
-                    return@withLock
+                when (val validation = adapter.validate(configuration)) {
+                    is ValidationResult.Invalid -> {
+                        dispatch(ConnectionEvent.Fail("Config validation failed: ${validation.reasonCode}"))
+                        return@withLock
+                    }
+                    ValidationResult.Valid -> dispatch(ConnectionEvent.Start)
                 }
-
-                dispatch(ConnectionEvent.Start)
             }
         }
     }
@@ -63,29 +61,15 @@ class ConnectionCoordinator(
             mutex.withLock {
                 val adapter = adapters[engineId] ?: return@withLock
                 dispatch(ConnectionEvent.PermissionGranted(engineId))
-
-                val interfaceReady = try {
-                    onVpnInterfaceRequested(engineId, configuration)
-                } catch (e: Exception) {
-                    dispatch(ConnectionEvent.Fail("TUN interface setup failed: ${e.message}"))
-                    return@withLock
-                }
-
-                if (!interfaceReady) {
-                    dispatch(ConnectionEvent.Fail("Failed to establish TUN interface"))
-                    return@withLock
-                }
-
                 try {
                     val session = adapter.connect(
                         configuration = configuration,
-                        protectSocket = { true },
                         onEvent = { event -> handleEngineEvent(engineId, event) }
                     )
                     currentSession = session
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     cleanupSession()
-                    dispatch(ConnectionEvent.Fail("Engine connection failed: ${e.message}"))
+                    dispatch(ConnectionEvent.Fail("ENGINE_START_FAILED"))
                 }
             }
         }
@@ -117,35 +101,33 @@ class ConnectionCoordinator(
     }
 
     private suspend fun verifyEgressTraffic(engineId: String) {
-        val verification = trafficVerifier.verify(timeoutMillis = 4000L)
-        if (verification.success) {
+        val verification = trafficVerifier.verify(timeoutMillis = 5000L)
+        if (verification.success && !verification.egressIp.isNullOrBlank()) {
             val now = System.currentTimeMillis()
             _diagnostics.value = _diagnostics.value.copy(
                 lastVerifiedAtMillis = now,
                 lastLatencyMillis = verification.latencyMillis,
-                activeEngineId = engineId
+                activeEngineId = engineId,
+                publicEgressIp = verification.egressIp
             )
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
-            val reason = verification.errorMessage ?: "Egress traffic verification failed"
             cleanupSession()
-            dispatch(ConnectionEvent.Fail(reason))
+            dispatch(ConnectionEvent.Fail(verification.errorMessage ?: "PUBLIC_EGRESS_VERIFICATION_FAILED"))
         }
     }
 
     private fun cleanupSession() {
         currentSession?.let { session ->
             adapters[session.engineId]?.let { adapter ->
-                scope.launch { adapter.disconnect(session) }
+                scope.launch { runCatching { adapter.disconnect(session) } }
             }
             currentSession = null
         }
-        scope.launch {
-            try {
-                onVpnInterfaceTornDown()
-            } catch (_: Exception) {}
-        }
-        _diagnostics.value = _diagnostics.value.copy(activeEngineId = null)
+        _diagnostics.value = _diagnostics.value.copy(
+            activeEngineId = null,
+            publicEgressIp = null
+        )
     }
 
     fun disconnect() {
