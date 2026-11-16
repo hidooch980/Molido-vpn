@@ -2,45 +2,32 @@
 
 ## Runtime boundaries
 
-```text
-Compose UI
-  └─ ViewModel / use cases
-      └─ ConnectionCoordinator (Kotlin)
-          ├─ Policy + route scorer
-          ├─ EngineAdapter interface
-          │   ├─ WireGuard adapter
-          │   ├─ Xray adapter
-          │   ├─ AmneziaWG adapter
-          │   └─ optional engines behind capability gates
-          └─ Android VpnService
-              ├─ TUN interface and routes
-              ├─ DNS policy
-              ├─ foreground notification
-              └─ lifecycle / lockdown integration
+    Compose UI
+      └─ ViewModel / use cases
+          └─ ConnectionCoordinator
+              ├─ deterministic route policy
+              ├─ EngineAdapter
+              │   └─ WireGuardEngineAdapter
+              │       └─ official WireGuard GoBackend
+              │           ├─ wireguard-go userspace transport
+              │           └─ library-owned Android VpnService / TUN
+              └─ HTTPS public-egress verifier
 
-Optional Rust core:
-  deterministic scoring, parsing, and isolated performance-critical code.
-```
+Future engines (Xray, AmneziaWG, MASQUE, WARP, Psiphon, Tor) are gated by separate feasibility, license and security reviews.
 
-## Key design decisions
-- Android `VpnService` is the single owner of the device TUN interface. Engines must integrate through a documented adapter boundary; competing engines must not independently race to own the VPN interface.
-- One active engine at a time for the initial release. Multi-hop chaining is a later, separately threat-modeled feature.
-- The coordinator uses an explicit state machine: Idle → Preparing → Connecting → Verifying → Connected; failures move to Recovering or Failed. Disconnect always tears down routes and descriptors.
-- Engine adapters expose capabilities (IPv4, IPv6, UDP, DNS mode, per-app routing, MTU, proxy/TUN mode), not just a display name.
-- A route is eligible only when its configuration is valid, its upstream service is reachable, and its capabilities satisfy the user's policy.
-- Adaptive selection first uses deterministic measurements and bounded scoring. ML must not override privacy, security, or user constraints.
-- Verification checks actual traffic through the TUN path, DNS resolution path, external IPv4/IPv6 egress, and recovery behavior. UI must distinguish “handshake” from “traffic verified”.
-- Country and IP labels are obtained from a documented IP metadata provider and marked approximate.
+## Connection invariants
+- WireGuard's maintained Android backend owns its VPN service and TUN descriptor; Molido must not establish a competing empty TUN.
+- The profile must parse successfully and contain an interface address and at least one peer.
+- A backend UP state means the tunnel engine activated; it is not proof that traffic reaches the public internet.
+- The coordinator enters Connected only after an HTTPS IP-echo request succeeds and returns a literal public egress IP.
+- A failed verification tears down the engine session and clears the displayed egress IP.
+- No fallback default routes, synthetic server inventory, mock credentials, or hard-coded public IPs are permitted in production code.
+- Engine adapters must not log private keys, credentials, or complete profiles.
 
-## Engine adapter contract (conceptual)
-Each adapter must provide:
-- stable engine ID and version;
-- license and notices metadata;
-- capability declaration;
-- configuration validation without logging secrets;
-- start/stop lifecycle bound to the VPN service;
-- health and structured error events;
-- traffic counters and verification hooks where available.
+## Privacy and geolocation
+- Public IP is obtained from a configured HTTPS IP-echo service and should be shown only after successful verification.
+- Geolocation is approximate and must be sourced separately from a documented provider. Never infer a country from a VPN server label.
+- Route measurements remain local by default. Diagnostics upload requires explicit opt-in and redaction.
 
-## Privacy
-Keep route measurements local by default. Do not collect domains, payloads, or browsing history. Any optional diagnostics upload requires clear opt-in and redaction.
+## Verification still required
+Physical Android devices must verify connection, disconnection, reconnect, network changes, process death, IPv4/IPv6 egress, DNS leakage, and Android lockdown/kill-switch behavior. CI unit tests cannot replace these tests.
