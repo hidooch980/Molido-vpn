@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -46,6 +47,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -59,6 +63,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +74,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
+import kotlinx.coroutines.launch
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.ui.ServerItem
@@ -120,6 +128,9 @@ fun MainScreen(viewModel: VpnViewModel) {
     val wireGuardConfigText by viewModel.wireGuardConfigText.collectAsState()
 
     var showConfigEditor by remember { mutableStateOf(false) }
+    var selectedPage by remember { mutableStateOf("home") }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -130,106 +141,178 @@ fun MainScreen(viewModel: VpnViewModel) {
     LaunchedEffect(Unit) {
         viewModel.effects.collectLatest { effect ->
             when (effect) {
-                is VpnUiEffect.RequestVpnPermission -> {
-                    vpnPermissionLauncher.launch(effect.intent)
-                }
-                is VpnUiEffect.ShowToast -> {
-                    Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
-                }
+                is VpnUiEffect.RequestVpnPermission -> vpnPermissionLauncher.launch(effect.intent)
+                is VpnUiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("MolidoVPN AI", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(
-                            "Independent Multi-Engine Connectivity",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = Color(0xFF111C31),
+                drawerContentColor = Color(0xFFF1F5F9)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("MolidoVPN AI", fontWeight = FontWeight.Bold, fontSize = 21.sp, color = Color(0xFF38BDF8))
+                    Text("Secure • Fast • Verified", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                    Spacer(modifier = Modifier.height(14.dp))
+                    listOf(
+                        "home" to "Home",
+                        "servers" to "Servers & Countries",
+                        "statistics" to "Statistics",
+                        "security" to "Security",
+                        "settings" to "Settings & Protocols",
+                        "about" to "About"
+                    ).forEach { (page, label) ->
+                        NavigationDrawerItem(
+                            label = { Text(label) },
+                            selected = selectedPage == page,
+                            onClick = {
+                                selectedPage = page
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refreshServers() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Routes")
-                    }
-                    IconButton(onClick = { showConfigEditor = !showConfigEditor }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Config Editor")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                StatusCard(
-                    connectionState = connectionState,
-                    selectedEngine = selectedEngineId,
-                    onConnect = { viewModel.onConnectClicked(context) },
-                    onDisconnect = { viewModel.onDisconnectClicked() }
-                )
-            }
-
-            item {
-                DiagnosticsCard(diagnostics = diagnostics, connectionState = connectionState)
-            }
-
-            item {
-                EngineSelector(
-                    selectedEngine = selectedEngineId,
-                    onSelect = { viewModel.setSelectedEngine(it) }
-                )
-            }
-
-            if (showConfigEditor) {
-                item {
-                    ConfigEditorCard(
-                        configText = wireGuardConfigText,
-                        onConfigChanged = { viewModel.updateWireGuardConfig(it) }
-                    )
                 }
             }
-
-            item {
-                Text(
-                    "Adaptive Route Scoring (Deterministic Matrix)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 8.dp)
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                        }
+                    },
+                    title = {
+                        Column {
+                            Text("MolidoVPN AI", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text(
+                                when (selectedPage) {
+                                    "servers" -> "Servers & Countries"
+                                    "statistics" -> "Connection Statistics"
+                                    "security" -> "Security & Privacy"
+                                    "settings" -> "Settings & Protocols"
+                                    "about" -> "About MolidoVPN AI"
+                                    else -> "Verified VPN Connectivity"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    actions = {
+                        if (selectedPage == "home" || selectedPage == "servers") {
+                            IconButton(onClick = { viewModel.refreshServers() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh verified servers")
+                            }
+                        }
+                        if (selectedPage == "home" || selectedPage == "settings") {
+                            IconButton(onClick = { showConfigEditor = !showConfigEditor }) {
+                                Icon(Icons.Default.Settings, contentDescription = "WireGuard profile settings")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
-            }
+            },
+            containerColor = MaterialTheme.colorScheme.background
+        ) { paddingValues ->
+            when (selectedPage) {
+                "home" -> LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        StatusCard(
+                            connectionState = connectionState,
+                            selectedEngine = selectedEngineId,
+                            onConnect = { viewModel.onConnectClicked(context) },
+                            onDisconnect = { viewModel.onDisconnectClicked() }
+                        )
+                    }
+                    item { DiagnosticsCard(diagnostics = diagnostics, connectionState = connectionState) }
+                    item { EngineSelector(selectedEngine = selectedEngineId, onSelect = { viewModel.setSelectedEngine(it) }) }
+                    if (showConfigEditor) {
+                        item {
+                            ConfigEditorCard(
+                                configText = wireGuardConfigText,
+                                onConfigChanged = { viewModel.updateWireGuardConfig(it) }
+                            )
+                        }
+                    }
+                    if (servers.isEmpty()) {
+                        item {
+                            Text(
+                                "No verified server profiles are configured. Import your own WireGuard .conf profile in Settings to connect.",
+                                color = Color(0xFFF59E0B),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    } else {
+                        items(servers) { server -> ServerRouteCard(server = server) }
+                    }
+                    item { Spacer(modifier = Modifier.height(24.dp)) }
+                }
 
-            if (servers.isEmpty()) {
-                item {
+                "servers" -> Column(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Verified server inventory", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "No verified server profiles are configured. Import your own WireGuard .conf profile to connect.",
-                        color = Color(0xFFF59E0B),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        if (servers.isEmpty()) "No real server endpoints are configured yet. MolidoVPN will not invent countries, latency, or server availability."
+                        else "${servers.size} verified server entries",
+                        color = Color(0xFF94A3B8)
+                    )
+                    if (servers.isNotEmpty()) servers.forEach { ServerRouteCard(it) }
+                }
+
+                "statistics" -> Column(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    DiagnosticsCard(diagnostics = diagnostics, connectionState = connectionState)
+                    Text(
+                        "Live throughput history and long-term charts will appear only when real backend counters and sampling are implemented.",
+                        color = Color(0xFF94A3B8)
                     )
                 }
-            } else {
-                items(servers) { server ->
-                    ServerRouteCard(server = server)
-                }
-            }
 
-            item {
-                Spacer(modifier = Modifier.height(24.dp))
+                "security" -> Column(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Security verification", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Public egress IP and approximate location are checked over HTTPS after the WireGuard backend starts.")
+                    Text("DNS leak, IPv6 leak, Android lockdown/Kill Switch, network handover, and process-death tests are not yet device-verified.", color = Color(0xFFF59E0B))
+                    Text("The location estimate is based on the VPN exit IP, not GPS. The IP lookup provider receives that VPN egress IP.", color = Color(0xFF94A3B8))
+                }
+
+                "settings" -> Column(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    EngineSelector(selectedEngine = selectedEngineId, onSelect = { viewModel.setSelectedEngine(it) })
+                    ConfigEditorCard(configText = wireGuardConfigText, onConfigChanged = { viewModel.updateWireGuardConfig(it) })
+                }
+
+                else -> Column(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("MolidoVPN AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Android VPN client using the official WireGuard userspace backend.")
+                    Text("Only real, verified connection information is displayed. No mock server list or simulated IP is used.", color = Color(0xFF94A3B8))
+                    Text("Privacy data flows: docs/privacy-data-flows.md", color = Color(0xFF38BDF8))
+                }
             }
         }
     }
