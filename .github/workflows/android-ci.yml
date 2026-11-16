@@ -23,5 +23,7 @@ jobs:
         run: chmod +x gradlew
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
-      - name: Build debug APK (CI validation only)
+      - name: Android lint
+        run: ./gradlew lint --stacktrace
+      - name: Build debug APK (CI validation only; not a release artifact)
         run: ./gradlew assembleDebug --stacktrace
