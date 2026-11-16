@@ -31,7 +31,7 @@ Independent Android VPN client focused on reliable, privacy-preserving multi-eng
 ## Build and validation
 Run ./gradlew testDebugUnitTest, ./gradlew lint, and ./gradlew assembleDebug.
 
-Debug builds are CI validation artifacts only and are not product releases.
+Debug builds are CI validation artifacts only and are not product releases. The manual signed-release workflow is fail-closed: it requires physical-device acceptance, the prior app identity/version, the existing owner keystore secrets, and an exact signing-certificate fingerprint match before it uploads a final APK.
 
 ## Release gate
 A signed release requires: successful CI, dependency/license review, SBOM and vulnerability review, real Android connect/disconnect/reconnect tests, public IPv4/IPv6 egress checks, DNS leak tests, kill-switch/lockdown tests, network handover and process-death recovery, privacy review, and verification of the owner's existing signing key.
