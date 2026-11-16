@@ -140,7 +140,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
         if (engineId == "auto") {
             // In auto mode, pick the best scored server from catalog
-            val bestServer = _servers.value.firstOrNull()
+            val bestServer = _servers.value.firstOrNull { it.score.eligible }
             if (bestServer != null) {
                 updateActiveConfig(bestServer.payload)
             }
@@ -234,7 +234,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                     val doneMsg = if (_language.value == AppLanguage.PERSIAN) "${configs.size} سرور رایگان جدید از گیت‌هاب با موفقیت اضافه شد" else "Added ${configs.size} free servers from GitHub"
                     _effects.emit(VpnUiEffect.ShowToast(doneMsg))
                 } else {
-                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "سرورهای رایگان کاتالوگ فعال و بروز هستند" else "Default catalog servers are active"
+                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "پروفایل قابل‌اتصال تأییدشده‌ای در منبع عمومی پیدا نشد" else "No verified connectable profile was found in the community source"
                     _effects.emit(VpnUiEffect.ShowToast(fallbackMsg))
                 }
             } catch (e: Exception) {
@@ -315,20 +315,32 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onPermissionResult(isGranted: Boolean) {
-        if (isGranted) {
-            val engine = if (_selectedEngineId.value == "auto") {
-                _servers.value.firstOrNull()?.engineId ?: "warp"
-            } else _selectedEngineId.value
-
-            val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-            coordinator.onVpnPermissionGranted(engine, EngineConfiguration(configPayload))
-        } else {
+        if (!isGranted) {
             viewModelScope.launch {
                 val msg = if (_language.value == AppLanguage.PERSIAN) "مجوز اتصال VPN رد شد" else "VPN permission denied"
                 _effects.emit(VpnUiEffect.ShowToast(msg))
             }
             coordinator.disconnect()
+            return
         }
+
+        val selected = _selectedEngineId.value
+        val route = if (selected == "auto") _servers.value.firstOrNull { it.score.eligible } else null
+        val engine = route?.engineId ?: selected.takeUnless { it == "auto" }
+        val payload = route?.payload ?: _activeConfigText.value
+        if (engine == null || payload.isBlank()) {
+            coordinator.disconnect()
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "پروفایل معتبر یا مسیر اندازه‌گیری‌شده موجود نیست"
+                    else "No valid profile or measured route is available"
+                ))
+            }
+            return
+        }
+
+        coordinator.onVpnPermissionGranted(engine, EngineConfiguration(payload.toByteArray(Charsets.UTF_8)))
     }
 
     fun onDisconnectClicked() {
