@@ -67,13 +67,14 @@ object BatchPingTester {
     fun extractEndpoint(engineId: String, rawPayload: String): Pair<String, Int> {
         return try {
             when (engineId) {
-                "warp" -> {
-                    // Extract Endpoint from WARP ini or default
-                    val match = Regex("""Endpoint\s*=\s*([^:\s]+):(\d+)""").find(rawPayload)
+                "warp", "wireguard", "amnezia" -> {
+                    val match = Regex("""Endpoint\s*=\s*([^:\s]+):(\d+)""", RegexOption.IGNORE_CASE).find(rawPayload)
                     if (match != null) {
                         Pair(match.groupValues[1], match.groupValues[2].toInt())
-                    } else {
+                    } else if (engineId == "warp") {
                         Pair("162.159.192.1", 2408)
+                    } else {
+                        Pair("1.1.1.1", 443)
                     }
                 }
                 "xray" -> {
@@ -83,14 +84,6 @@ object BatchPingTester {
                 "hysteria2" -> {
                     val config = Hysteria2ConfigParser.parse(rawPayload)
                     Pair(config.server, config.port)
-                }
-                "amnezia" -> {
-                    val config = AmneziaWgConfigParser.parse(rawPayload)
-                    Pair(config.peerConfig.endpointHost, config.peerConfig.endpointPort)
-                }
-                "wireguard" -> {
-                    val config = WireGuardConfigParser.parse(rawPayload)
-                    Pair(config.peerConfig.endpointHost, config.peerConfig.endpointPort)
                 }
                 else -> Pair("1.1.1.1", 443)
             }

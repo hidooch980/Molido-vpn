@@ -29,6 +29,7 @@ class BatchPingTesterTest {
         val wgConfig = """
             [Interface]
             PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+            Address = 10.200.0.2/32
             [Peer]
             PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
             Endpoint = 198.51.100.1:51820
