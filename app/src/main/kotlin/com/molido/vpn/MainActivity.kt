@@ -375,24 +375,36 @@ fun StatusBadge(connectionState: ConnectionState) {
 
 @Composable
 fun DiagnosticsCard(diagnostics: ConnectionDiagnostics, connectionState: ConnectionState) {
+    val approximateLocation = listOfNotNull(
+        diagnostics.publicEgressCity,
+        diagnostics.publicEgressRegion,
+        diagnostics.publicEgressCountry
+    ).distinct().joinToString(", ").ifBlank { "Not available" }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Connection Diagnostics", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                DiagnosticItem("Egress Verification", if (connectionState is ConnectionState.Connected) "Passed" else "Pending")
-                DiagnosticItem("Public egress IP", diagnostics.publicEgressIp ?: "Not verified")
+                DiagnosticItem("Egress check", if (connectionState is ConnectionState.Connected) "Passed" else "Pending")
                 DiagnosticItem("Latency", diagnostics.lastLatencyMillis?.let { "$it ms" } ?: "—")
-                DiagnosticItem("Bytes In/Out", "${diagnostics.bytesIn / 1024}k / ${diagnostics.bytesOut / 1024}k")
+                DiagnosticItem("Traffic", "${diagnostics.bytesIn / 1024}k / ${diagnostics.bytesOut / 1024}k")
             }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                DiagnosticItem("Public IP", diagnostics.publicEgressIp ?: "Not verified")
+                DiagnosticItem("Approx. location", approximateLocation)
+            }
+            Text(
+                "Location is estimated from the VPN exit IP, not GPS.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF94A3B8)
+            )
         }
     }
 }
-
 @Composable
 fun DiagnosticItem(label: String, value: String) {
     Column {
