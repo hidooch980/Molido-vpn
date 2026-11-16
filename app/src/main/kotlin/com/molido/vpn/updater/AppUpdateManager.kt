@@ -121,7 +121,7 @@ class AppUpdateManager(
                 destination.delete()
                 "APK_SHA256_MISMATCH"
             }
-            verifyInstalledSigningIdentity(destination)
+            verifyInstalledSigningIdentity(destination, update.versionCode)
             destination
         }
     }
@@ -150,7 +150,7 @@ class AppUpdateManager(
         return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
     }
 
-    private fun verifyInstalledSigningIdentity(apk: File) {
+    private fun verifyInstalledSigningIdentity(apk: File, expectedVersionCode: Long) {
         val flags = if (Build.VERSION.SDK_INT >= 28) {
             PackageManager.GET_SIGNING_CERTIFICATES
         } else {
@@ -160,6 +160,8 @@ class AppUpdateManager(
         val downloaded = context.packageManager.getPackageArchiveInfo(apk.absolutePath, flags)
             ?: error("Downloaded APK is not a valid Android package")
         check(downloaded.packageName == context.packageName) { "APK_PACKAGE_ID_MISMATCH" }
+        val downloadedVersionCode = if (Build.VERSION.SDK_INT >= 28) downloaded.longVersionCode else @Suppress("DEPRECATION") downloaded.versionCode.toLong()
+        check(downloadedVersionCode == expectedVersionCode) { "APK_VERSION_CODE_MISMATCH" }
 
         val installed = context.packageManager.getPackageInfo(context.packageName, flags)
         val installedSigners = if (Build.VERSION.SDK_INT >= 28) {
