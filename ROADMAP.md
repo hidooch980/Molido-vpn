@@ -3,13 +3,14 @@
 ## Phase 0 — repository baseline
 - [x] Establish independent repository and product/security principles.
 - [x] Document architecture and engine feasibility gates.
-- [ ] Add Android Gradle project skeleton and pinned toolchain.
-- [ ] Add CI for formatting, static analysis, unit tests, and debug build.
+- [x] Add Android Gradle project skeleton and Compose app shell.
+- [x] Add CI workflow for a debug build.
+- [ ] Run CI and resolve toolchain/build issues.
 
 ## Phase 1 — reliable VPN foundation
-- [ ] Compose app shell and navigation.
-- [ ] Permission flow and foreground Android VpnService.
-- [ ] TUN lifecycle, route policy, DNS configuration, IPv4/IPv6 handling.
+- [ ] Compose navigation, connection state and permission flow.
+- [ ] Foreground Android VpnService with notification and lifecycle handling.
+- [ ] TUN interface, routes, DNS policy, IPv4/IPv6 handling.
 - [ ] Engine adapter contract, state machine, structured diagnostics.
 - [ ] Connection verification and fail-safe disconnect behavior.
 
