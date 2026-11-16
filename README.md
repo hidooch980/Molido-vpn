@@ -20,6 +20,9 @@ Independent Android VPN client focused on reliable, privacy-preserving multi-eng
 5. A production engine requires pinned upstream code, license notices, automated tests, and Android device verification.
 6. No release APK until all acceptance gates pass.
 
+## Privacy
+- Current IP and approximate geolocation data flow: [privacy data flows](docs/privacy-data-flows.md).
+
 ## Engine status
 - WireGuard: official com.wireguard.android:tunnel dependency integrated on the hardening branch; real device verification remains pending.
 - Xray-core, AmneziaWG, MASQUE/CONNECT-IP, WARP, Psiphon, Tor: not integrated; each requires separate feasibility, license, and security review.
