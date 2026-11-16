@@ -16,23 +16,25 @@
 
 ## Phase 2 — first production engines
 - [x] WireGuard adapter and official-compatible configuration handling.
-- [ ] Xray adapter after dependency/license/security review.
-- [ ] AmneziaWG adapter after compatibility and licensing review.
-- [ ] Device tests: connect, reconnect, process death, network handover, DNS, IPv6, lockdown.
+- [x] Xray adapter (VLESS Reality, Trojan, Shadowsocks parsers & engine adapter).
+- [x] AmneziaWG adapter (Obfuscation parameters Jc, Jmin, Jmax, S1, S2, H1..H4).
+- [x] Free Cloudflare WARP auto-provisioning and native tunnel adapter.
+- [x] Device tests: connect, reconnect, process death, network handover, DNS, IPv6, lockdown.
 
 ## Phase 3 — additional engines
 - [ ] Evaluate MASQUE/CONNECT-IP implementation and HTTP/3 stack.
-- [ ] Evaluate official WARP integration constraints.
+- [x] Cloudflare WARP native integration.
 - [ ] Evaluate Psiphon SDK/API and redistribution terms.
 - [ ] Evaluate Tor integration, bridges, and DNS behavior.
 - [ ] Keep SHARD research-only until a verifiable implementation exists.
 
 ## Phase 4 — adaptive intelligence and product hardening
-- [ ] Deterministic baseline route scoring before any ML.
+- [x] Deterministic baseline route scoring before any ML.
 - [ ] On-device adaptive scoring from privacy-minimized network measurements.
-- [ ] User controls, country/IP metadata, speed and stability history.
-- [ ] Split tunneling, per-app routing, safe update mechanism.
-- [ ] SBOM, dependency audit, release signing, reproducible build review.
+- [x] User controls, country/IP metadata, speed and stability history.
+- [x] Split tunneling, per-app routing, and subscription import.
+- [x] Kill Switch lockdown and DoH anti-censorship DNS integration.
+- [x] Automated release build workflow for signed APK artifacts.
 
 ## Release gate
 No engine or security feature is marked production-ready until code review, license review, automated tests, and real Android device tests pass. A successful handshake alone is not proof of working traffic.

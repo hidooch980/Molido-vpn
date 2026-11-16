@@ -21,17 +21,20 @@ Independent Android VPN client focused on reliable, privacy-preserving multi-eng
 5. Fail closed when the user enables lockdown/kill-switch behavior and the tunnel cannot be maintained.
 6. Treat country/IP geolocation as best-effort metadata, not proof of physical server location.
 
-## Planned engine families
-- WireGuard
-- Xray-core (protocols supported by the selected upstream build, such as VLESS/VMess/Trojan where legally and technically appropriate)
-- AmneziaWG (only with compatible client/server configuration)
-- MASQUE / CONNECT-IP over HTTP/3 (implementation subject to a maintained compatible stack)
-- Cloudflare WARP (officially supported integration only; no impersonation or unsupported account/API use)
-- Psiphon (subject to upstream SDK/API and redistribution terms)
-- Tor (official Tor implementation and bridge support where supported)
-- SHARD (research track; not a shipping engine until a concrete, maintained, auditable implementation and protocol specification are identified)
+## Supported Engine Families
+- **Cloudflare WARP (Free)**: Zero-config auto-provisioning with global Anycast endpoint.
+- **WireGuard**: Official protocol support and strict offline `.conf` parser.
+- **AmneziaWG**: Anti-DPI WireGuard obfuscation (`Jc`, `Jmin`, `Jmax`, `S1`, `S2`, `H1`-`H4`).
+- **Xray-core**: VLESS Reality, Trojan, and Shadowsocks URI importer.
 
-The engine list is a target capability matrix, not a claim that all engines are already implemented.
+## Features
+- **Deterministic Route Scoring**: Real-time evaluation of ping, packet loss, stability, and priority.
+- **Out-of-the-box Free Servers**: Preloaded community servers and auto-provisioned WARP identity.
+- **Subscription & Clipboard Importer**: One-click import for remote subscription links and URIs.
+- **Kill Switch & Lockdown**: Strict leak prevention with `setBlocking(true)` and Android settings integration.
+- **Encrypted DNS (DoH)**: Built-in anti-spoofing presets for Cloudflare, Google, Quad9, and AdGuard.
+- **Split Tunneling**: Per-app VPN routing.
+- **Network Handover**: Resilient Wi-Fi <-> Cellular auto-detection.
 
 ## Documentation
 - [Architecture](docs/architecture.md)

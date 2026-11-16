@@ -6,14 +6,25 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.molido.vpn.data.EncryptedConfigStore
+import com.molido.vpn.data.FreeServerCatalog
+import com.molido.vpn.data.FreeServerProfile
+import com.molido.vpn.dns.DohDnsResolver
 import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.engine.EngineConfiguration
+import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
+import com.molido.vpn.engine.warp.WarpEngineAdapter
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
+import com.molido.vpn.engine.xray.XrayEngineAdapter
+import com.molido.vpn.importer.ConfigImporter
+import com.molido.vpn.importer.SubscriptionManager
+import com.molido.vpn.policy.AppInfo
 import com.molido.vpn.policy.RouteMeasurement
 import com.molido.vpn.policy.RouteScore
 import com.molido.vpn.policy.RouteScorer
+import com.molido.vpn.policy.SplitTunnelManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
 import com.molido.vpn.vpn.MolidoVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,10 +38,13 @@ import kotlinx.coroutines.launch
 data class ServerItem(
     val id: String,
     val name: String,
+    val engineId: String,
     val country: String,
     val flagEmoji: String,
+    val payload: String,
     val measurement: RouteMeasurement,
-    val score: RouteScore
+    val score: RouteScore,
+    val isFree: Boolean = true
 )
 
 sealed interface VpnUiEffect {
@@ -40,12 +54,22 @@ sealed interface VpnUiEffect {
 
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
+    val configStore = EncryptedConfigStore(application)
+
     private val wireguardAdapter = WireGuardEngineAdapter()
+    private val amneziaAdapter = AmneziaWgEngineAdapter()
+    private val xrayAdapter = XrayEngineAdapter()
+    private val warpAdapter = WarpEngineAdapter()
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
         trafficVerifier = NetworkTrafficVerifier(),
-        adapters = mapOf(wireguardAdapter.id to wireguardAdapter),
+        adapters = mapOf(
+            wireguardAdapter.id to wireguardAdapter,
+            amneziaAdapter.id to amneziaAdapter,
+            xrayAdapter.id to xrayAdapter,
+            warpAdapter.id to warpAdapter
+        ),
         onVpnInterfaceRequested = { engineId, config ->
             val context = getApplication<Application>()
             val configText = String(config.opaquePayload, Charsets.UTF_8)
@@ -64,42 +88,147 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _effects = MutableSharedFlow<VpnUiEffect>()
     val effects: SharedFlow<VpnUiEffect> = _effects.asSharedFlow()
 
-    private val _selectedEngineId = MutableStateFlow("wireguard")
+    private val _selectedEngineId = MutableStateFlow(configStore.getSelectedEngine())
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
-    private val _wireGuardConfigText = MutableStateFlow(DEFAULT_WG_CONFIG)
-    val wireGuardConfigText: StateFlow<String> = _wireGuardConfigText.asStateFlow()
+    private val _activeConfigText = MutableStateFlow(
+        configStore.getActiveConfig() ?: FreeServerCatalog.getDefaultFreeServers()[0].rawPayload
+    )
+    val activeConfigText: StateFlow<String> = _activeConfigText.asStateFlow()
 
     private val _servers = MutableStateFlow<List<ServerItem>>(emptyList())
     val servers: StateFlow<List<ServerItem>> = _servers.asStateFlow()
 
+    private val _killSwitchEnabled = MutableStateFlow(configStore.isKillSwitchEnabled())
+    val killSwitchEnabled: StateFlow<Boolean> = _killSwitchEnabled.asStateFlow()
+
+    private val _selectedDns = MutableStateFlow(configStore.getSelectedDns())
+    val selectedDns: StateFlow<String> = _selectedDns.asStateFlow()
+
+    private val _splitApps = MutableStateFlow(configStore.getSplitTunnelApps())
+    val splitApps: StateFlow<Set<String>> = _splitApps.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val installedApps: StateFlow<List<AppInfo>> = _installedApps.asStateFlow()
+
     init {
+        loadInstalledApps()
         refreshServers()
+    }
+
+    private fun loadInstalledApps() {
+        viewModelScope.launch {
+            try {
+                val apps = SplitTunnelManager.getInstalledApps(getApplication())
+                _installedApps.value = apps
+            } catch (_: Exception) {}
+        }
     }
 
     fun setSelectedEngine(engineId: String) {
         _selectedEngineId.value = engineId
+        configStore.saveSelectedEngine(engineId)
+
+        // If active config doesn't match engine, pick default free server of that engine
+        val freeMatch = FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
+        if (freeMatch != null) {
+            updateActiveConfig(freeMatch.rawPayload)
+        }
     }
 
-    fun updateWireGuardConfig(newText: String) {
-        _wireGuardConfigText.value = newText
+    fun updateActiveConfig(newText: String) {
+        _activeConfigText.value = newText
+        configStore.saveActiveConfig(newText)
+    }
+
+    fun toggleKillSwitch(enabled: Boolean) {
+        _killSwitchEnabled.value = enabled
+        configStore.saveKillSwitchEnabled(enabled)
+    }
+
+    fun setDnsProvider(providerId: String) {
+        _selectedDns.value = providerId
+        configStore.saveSelectedDns(providerId)
+    }
+
+    fun toggleAppExclusion(packageName: String) {
+        val current = _splitApps.value.toMutableSet()
+        if (current.contains(packageName)) current.remove(packageName) else current.add(packageName)
+        _splitApps.value = current
+        configStore.saveSplitTunnelApps(current)
+    }
+
+    fun selectServer(server: ServerItem) {
+        setSelectedEngine(server.engineId)
+        updateActiveConfig(server.payload)
+        viewModelScope.launch {
+            _effects.emit(VpnUiEffect.ShowToast("Selected: ${server.name}"))
+        }
+    }
+
+    fun importFromRawText(rawText: String) {
+        try {
+            val imported = ConfigImporter.detectAndParse(rawText)
+            setSelectedEngine(imported.engineId)
+            updateActiveConfig(imported.payload)
+            refreshServers()
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast("Imported successfully as ${imported.engineId.uppercase()}"))
+            }
+        } catch (e: Exception) {
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast("Import failed: ${e.message}"))
+            }
+        }
+    }
+
+    fun importFromSubscription(url: String) {
+        viewModelScope.launch {
+            try {
+                _effects.emit(VpnUiEffect.ShowToast("Fetching subscription..."))
+                val configs = SubscriptionManager.fetchSubscription(url)
+                if (configs.isEmpty()) {
+                    _effects.emit(VpnUiEffect.ShowToast("No valid configurations found in subscription"))
+                    return@launch
+                }
+
+                // Add to saved subscriptions
+                val currentSubs = configStore.getSubscriptions().toMutableList()
+                if (!currentSubs.contains(url)) currentSubs.add(url)
+                configStore.saveSubscriptions(currentSubs)
+
+                // Select the first imported server
+                val first = configs.first()
+                setSelectedEngine(first.engineId)
+                updateActiveConfig(first.payload)
+                refreshServers()
+                _effects.emit(VpnUiEffect.ShowToast("Fetched ${configs.size} servers from subscription"))
+            } catch (e: Exception) {
+                _effects.emit(VpnUiEffect.ShowToast("Subscription error: ${e.message}"))
+            }
+        }
     }
 
     fun refreshServers() {
-        val rawMeasurements = listOf(
-            Triple("wg-de-1", "Germany (Frankfurt)", "\uD83C\uDDE9\uD83C\uDDEA") to RouteMeasurement("wireguard", true, 38L, 0.0, 99.0, userPriority = 5),
-            Triple("wg-nl-1", "Netherlands (Amsterdam)", "\uD83C\uDDF3\uD83C\uDDF1") to RouteMeasurement("wireguard", true, 45L, 0.2, 98.0, userPriority = 0),
-            Triple("wg-fi-1", "Finland (Helsinki)", "\uD83C\uDDEB\uD83C\uDDEE") to RouteMeasurement("wireguard", true, 68L, 0.0, 96.0, userPriority = 0),
-            Triple("wg-us-1", "USA (New York)", "\uD83C\uDDFA\uD83C\uDDF8") to RouteMeasurement("wireguard", true, 115L, 1.0, 92.0, userPriority = -5)
+        val freeServers = FreeServerCatalog.getDefaultFreeServers()
+
+        val mockMetrics = mapOf(
+            "free-warp-global" to RouteMeasurement("warp", true, 28L, 0.0, 99.0, userPriority = 10),
+            "free-reality-1" to RouteMeasurement("xray", true, 54L, 0.1, 98.0, userPriority = 5),
+            "free-amnezia-1" to RouteMeasurement("amnezia", true, 62L, 0.0, 97.0, userPriority = 5),
+            "free-wireguard-1" to RouteMeasurement("wireguard", true, 75L, 0.5, 95.0, userPriority = 0)
         )
 
-        val items = rawMeasurements.map { (meta, measurement) ->
+        val items = freeServers.map { profile ->
+            val measurement = mockMetrics[profile.id] ?: RouteMeasurement(profile.engineId, true, 80L, 0.0, 90.0)
             val score = RouteScorer.score(measurement)
             ServerItem(
-                id = meta.first,
-                name = meta.second,
-                country = meta.second,
-                flagEmoji = meta.third,
+                id = profile.id,
+                name = profile.name,
+                engineId = profile.engineId,
+                country = profile.country,
+                flagEmoji = profile.flagEmoji,
+                payload = profile.rawPayload,
                 measurement = measurement,
                 score = score
             )
@@ -110,10 +239,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onConnectClicked(context: Context) {
         val engineId = _selectedEngineId.value
-        val configPayload = _wireGuardConfigText.value.toByteArray(Charsets.UTF_8)
+        val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
         val config = EngineConfiguration(configPayload)
 
-        // Validate configuration first
         val adapter = coordinator.getAdapter(engineId)
         if (adapter == null) {
             viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("Unsupported engine: $engineId")) }
@@ -135,11 +263,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     fun onPermissionResult(isGranted: Boolean) {
         if (isGranted) {
             val engineId = _selectedEngineId.value
-            val configPayload = _wireGuardConfigText.value.toByteArray(Charsets.UTF_8)
+            val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
             coordinator.onVpnPermissionGranted(engineId, EngineConfiguration(configPayload))
         } else {
             viewModelScope.launch {
-                _effects.emit(VpnUiEffect.ShowToast("VPN permission denied by user"))
+                _effects.emit(VpnUiEffect.ShowToast("VPN permission denied"))
             }
             coordinator.disconnect()
         }
@@ -147,21 +275,5 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onDisconnectClicked() {
         coordinator.disconnect()
-    }
-
-    companion object {
-        val DEFAULT_WG_CONFIG = """
-            [Interface]
-            PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
-            Address = 10.200.0.2/32
-            DNS = 1.1.1.1, 8.8.8.8
-            MTU = 1420
-
-            [Peer]
-            PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
-            Endpoint = 198.51.100.1:51820
-            AllowedIPs = 0.0.0.0/0, ::/0
-            PersistentKeepalive = 25
-        """.trimIndent()
     }
 }

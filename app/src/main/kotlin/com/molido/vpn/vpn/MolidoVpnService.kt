@@ -11,7 +11,13 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.molido.vpn.MainActivity
+import com.molido.vpn.data.EncryptedConfigStore
+import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.engine.amnezia.AmneziaWgConfigParser
 import com.molido.vpn.engine.wireguard.WireGuardConfigParser
+import com.molido.vpn.network.NetworkHandoverMonitor
+import com.molido.vpn.policy.KillSwitchManager
+import com.molido.vpn.policy.SplitTunnelManager
 import java.io.IOException
 
 class MolidoVpnService : VpnService() {
@@ -55,9 +61,12 @@ class MolidoVpnService : VpnService() {
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var handoverMonitor: NetworkHandoverMonitor? = null
+    private lateinit var configStore: EncryptedConfigStore
 
     override fun onCreate() {
         super.onCreate()
+        configStore = EncryptedConfigStore(this)
         createNotificationChannel()
     }
 
@@ -86,10 +95,17 @@ class MolidoVpnService : VpnService() {
                 isServiceRunning = true
                 activeEngine = engineId
                 updateNotification("Connected via $engineId")
+
+                // Start Handover Monitor
+                handoverMonitor?.stop()
+                handoverMonitor = NetworkHandoverMonitor(this) { isWifi, isCellular ->
+                    val netType = if (isWifi) "Wi-Fi" else if (isCellular) "Cellular" else "Network"
+                    updateNotification("Connected via $engineId ($netType)")
+                }.also { it.start() }
             } else {
                 handleDisconnect()
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             handleDisconnect()
         }
     }
@@ -98,38 +114,76 @@ class MolidoVpnService : VpnService() {
         val builder = Builder()
             .setSession("MolidoVPN AI ($engineId)")
 
-        if (engineId == "wireguard" && configText.isNotBlank()) {
-            try {
-                val parsed = WireGuardConfigParser.parse(configText)
-                builder.setMtu(parsed.interfaceConfig.mtu)
+        // Apply Kill Switch if enabled
+        if (configStore.isKillSwitchEnabled()) {
+            KillSwitchManager.applyToVpnBuilder(builder, true)
+        }
 
-                for (addr in parsed.interfaceConfig.addresses) {
-                    val parts = addr.split('/')
-                    if (parts.size == 2) {
-                        val ip = parts[0]
-                        val prefix = parts[1].toIntOrNull() ?: 32
-                        builder.addAddress(ip, prefix)
+        // Apply Split Tunneling exclusions
+        val splitApps = configStore.getSplitTunnelApps()
+        if (splitApps.isNotEmpty()) {
+            SplitTunnelManager.applyToVpnBuilder(builder, splitApps)
+        }
+
+        // Apply Custom / DoH DNS
+        val selectedDns = configStore.getSelectedDns()
+        DohDnsResolver.applyToVpnBuilder(builder, selectedDns)
+
+        // Protocol-specific TUN interface setup
+        when (engineId) {
+            "wireguard", "warp" -> {
+                try {
+                    val parsed = WireGuardConfigParser.parse(configText)
+                    builder.setMtu(parsed.interfaceConfig.mtu)
+
+                    for (addr in parsed.interfaceConfig.addresses) {
+                        val parts = addr.split('/')
+                        if (parts.size == 2) {
+                            val ip = parts[0]
+                            val prefix = parts[1].toIntOrNull() ?: 32
+                            builder.addAddress(ip, prefix)
+                        }
                     }
-                }
 
-                for (dns in parsed.interfaceConfig.dnsServers) {
-                    builder.addDnsServer(dns)
-                }
-
-                for (allowedIp in parsed.peerConfig.allowedIps) {
-                    val parts = allowedIp.split('/')
-                    if (parts.size == 2) {
-                        val ip = parts[0]
-                        val prefix = parts[1].toIntOrNull() ?: 0
-                        builder.addRoute(ip, prefix)
+                    for (allowedIp in parsed.peerConfig.allowedIps) {
+                        val parts = allowedIp.split('/')
+                        if (parts.size == 2) {
+                            val ip = parts[0]
+                            val prefix = parts[1].toIntOrNull() ?: 0
+                            builder.addRoute(ip, prefix)
+                        }
                     }
+                } catch (_: Exception) {
+                    applyDefaultTunParameters(builder)
                 }
-            } catch (e: Exception) {
-                // Fallback to baseline default tunnel parameters
+            }
+            "amnezia" -> {
+                try {
+                    val parsed = AmneziaWgConfigParser.parse(configText)
+                    builder.setMtu(parsed.interfaceConfig.mtu)
+
+                    for (addr in parsed.interfaceConfig.addresses) {
+                        val parts = addr.split('/')
+                        if (parts.size == 2) {
+                            val ip = parts[0]
+                            val prefix = parts[1].toIntOrNull() ?: 32
+                            builder.addAddress(ip, prefix)
+                        }
+                    }
+                    builder.addRoute("0.0.0.0", 0)
+                } catch (_: Exception) {
+                    applyDefaultTunParameters(builder)
+                }
+            }
+            "xray" -> {
+                // Xray / VLESS tun mode route mapping
+                builder.setMtu(1500)
+                    .addAddress("172.19.0.1", 30)
+                    .addRoute("0.0.0.0", 0)
+            }
+            else -> {
                 applyDefaultTunParameters(builder)
             }
-        } else {
-            applyDefaultTunParameters(builder)
         }
 
         return builder.establish()
@@ -139,11 +193,11 @@ class MolidoVpnService : VpnService() {
         builder.setMtu(1420)
             .addAddress("10.200.0.2", 32)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer("1.1.1.1")
-            .addDnsServer("8.8.8.8")
     }
 
     private fun handleDisconnect() {
+        handoverMonitor?.stop()
+        handoverMonitor = null
         try {
             vpnInterface?.close()
         } catch (_: IOException) {}
