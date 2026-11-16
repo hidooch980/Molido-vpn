@@ -4,7 +4,8 @@ package com.molido.vpn.engine
  * Contract for a VPN transport implementation.
  *
  * Implementations must never log credentials, private keys, or full connection
- * configuration. The Android VpnService remains the sole TUN owner.
+ * configuration. The selected engine owns its transport lifecycle; Android's
+ * VpnService implementation remains the single owner of the device VPN slot.
  */
 interface EngineAdapter {
     val id: String
@@ -14,7 +15,6 @@ interface EngineAdapter {
     suspend fun validate(configuration: EngineConfiguration): ValidationResult
     suspend fun connect(
         configuration: EngineConfiguration,
-        protectSocket: (Int) -> Boolean,
         onEvent: (EngineEvent) -> Unit
     ): EngineSession
 
@@ -42,6 +42,7 @@ sealed interface ValidationResult {
 }
 
 sealed interface EngineEvent {
+    /** The backend has created and activated its tunnel; this is not proof of egress. */
     data object TransportReady : EngineEvent
     data class Failed(val reasonCode: String, val recoverable: Boolean) : EngineEvent
     data class Statistics(val bytesIn: Long, val bytesOut: Long) : EngineEvent
