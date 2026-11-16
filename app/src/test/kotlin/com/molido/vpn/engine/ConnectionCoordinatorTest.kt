@@ -57,7 +57,7 @@ class ConnectionCoordinatorTest {
     @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
-        val adapter = WireGuardEngineAdapter()
+        val adapter = TestReadyAdapter()
         val coordinator = ConnectionCoordinator(
             scope = this,
             trafficVerifier = mockVerifier,
@@ -65,10 +65,10 @@ class ConnectionCoordinatorTest {
         )
 
         val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
-        coordinator.requestConnect("wireguard", config)
+        coordinator.requestConnect("test-ready", config)
         advanceUntilIdle()
 
-        coordinator.onVpnPermissionGranted("wireguard", config)
+        coordinator.onVpnPermissionGranted("test-ready", config)
         advanceUntilIdle()
 
         val state = coordinator.state.value
