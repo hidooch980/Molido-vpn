@@ -9,19 +9,31 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.molido.vpn"
+        applicationId = providers.gradleProperty("releaseApplicationId").orNull ?: "com.molido.vpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("releaseVersionCode").orNull?.toIntOrNull() ?: 1
+        versionName = providers.gradleProperty("releaseVersionName").orNull ?: "0.1.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+            }
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
         debug { applicationIdSuffix = ".debug" }
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Release signing stays outside source control and must use the verified owner keystore.
         }
     }
 
