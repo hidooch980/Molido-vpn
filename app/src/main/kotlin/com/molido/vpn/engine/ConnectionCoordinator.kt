@@ -16,7 +16,10 @@ data class ConnectionDiagnostics(
     val bytesIn: Long = 0,
     val bytesOut: Long = 0,
     val activeEngineId: String? = null,
-    val publicEgressIp: String? = null
+    val publicEgressIp: String? = null,
+    val publicEgressCity: String? = null,
+    val publicEgressRegion: String? = null,
+    val publicEgressCountry: String? = null
 )
 
 class ConnectionCoordinator(
@@ -110,7 +113,10 @@ class ConnectionCoordinator(
                 lastVerifiedAtMillis = now,
                 lastLatencyMillis = verification.latencyMillis,
                 activeEngineId = engineId,
-                publicEgressIp = verification.egressIp
+                publicEgressIp = verification.egressIp,
+                publicEgressCity = verification.egressCity,
+                publicEgressRegion = verification.egressRegion,
+                publicEgressCountry = verification.egressCountry
             )
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
@@ -127,7 +133,10 @@ class ConnectionCoordinator(
         }
         _diagnostics.value = _diagnostics.value.copy(
             activeEngineId = null,
-            publicEgressIp = null
+            publicEgressIp = null,
+            publicEgressCity = null,
+            publicEgressRegion = null,
+            publicEgressCountry = null
         )
     }
 
