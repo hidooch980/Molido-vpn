@@ -5,17 +5,17 @@
 - [x] Document architecture and engine feasibility gates.
 - [x] Add Android Gradle project skeleton and Compose app shell.
 - [x] Add CI workflow for a debug build.
-- [ ] Run CI and resolve toolchain/build issues.
+- [x] Run CI and resolve toolchain/build issues (added Gradle 8.13 wrapper and fixed CI execution).
 
 ## Phase 1 — reliable VPN foundation
-- [ ] Compose navigation, connection state and permission flow.
-- [ ] Foreground Android VpnService with notification and lifecycle handling.
-- [ ] TUN interface, routes, DNS policy, IPv4/IPv6 handling.
-- [ ] Engine adapter contract, state machine, structured diagnostics.
-- [ ] Connection verification and fail-safe disconnect behavior.
+- [x] Compose navigation, connection state and permission flow.
+- [x] Foreground Android VpnService with notification and lifecycle handling.
+- [x] TUN interface, routes, DNS policy, IPv4/IPv6 handling.
+- [x] Engine adapter contract, state machine, structured diagnostics.
+- [x] Connection verification and fail-safe disconnect behavior.
 
 ## Phase 2 — first production engines
-- [ ] WireGuard adapter and official-compatible configuration handling.
+- [x] WireGuard adapter and official-compatible configuration handling.
 - [ ] Xray adapter after dependency/license/security review.
 - [ ] AmneziaWG adapter after compatibility and licensing review.
 - [ ] Device tests: connect, reconnect, process death, network handover, DNS, IPv6, lockdown.

@@ -39,5 +39,14 @@ The engine list is a target capability matrix, not a claim that all engines are 
 - [Security model](SECURITY.md)
 - [Roadmap](ROADMAP.md)
 
+## Build & Test
+```bash
+# Run unit tests
+./gradlew testDebugUnitTest
+
+# Build debug APK
+./gradlew assembleDebug
+```
+
 ## Build status
-The repository is being initialized. Android build tooling, pinned dependencies, CI, adapter implementations, and device-level verification will be added in staged commits. See [Roadmap](ROADMAP.md).
+Phase 1 foundation complete: Android `VpnService` lifecycle, foreground notification, TUN configuration, `ConnectionCoordinator`, traffic verification pipeline, and initial WireGuard engine parser/adapter are implemented and tested. See [Roadmap](ROADMAP.md).
