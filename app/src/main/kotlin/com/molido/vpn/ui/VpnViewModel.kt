@@ -10,12 +10,12 @@ import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.engine.EngineConfiguration
+import com.molido.vpn.engine.ValidationResult
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.policy.RouteMeasurement
 import com.molido.vpn.policy.RouteScore
 import com.molido.vpn.policy.RouteScorer
 import com.molido.vpn.verifier.NetworkTrafficVerifier
-import com.molido.vpn.vpn.MolidoVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -40,22 +40,12 @@ sealed interface VpnUiEffect {
 
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val wireguardAdapter = WireGuardEngineAdapter()
+    private val wireguardAdapter = WireGuardEngineAdapter(application)
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
         trafficVerifier = NetworkTrafficVerifier(),
-        adapters = mapOf(wireguardAdapter.id to wireguardAdapter),
-        onVpnInterfaceRequested = { engineId, config ->
-            val context = getApplication<Application>()
-            val configText = String(config.opaquePayload, Charsets.UTF_8)
-            MolidoVpnService.startService(context, engineId, configText)
-            true
-        },
-        onVpnInterfaceTornDown = {
-            val context = getApplication<Application>()
-            MolidoVpnService.stopService(context)
-        }
+        adapters = mapOf(wireguardAdapter.id to wireguardAdapter)
     )
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
@@ -67,15 +57,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedEngineId = MutableStateFlow("wireguard")
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
-    private val _wireGuardConfigText = MutableStateFlow(DEFAULT_WG_CONFIG)
+    private val _wireGuardConfigText = MutableStateFlow("")
     val wireGuardConfigText: StateFlow<String> = _wireGuardConfigText.asStateFlow()
 
     private val _servers = MutableStateFlow<List<ServerItem>>(emptyList())
     val servers: StateFlow<List<ServerItem>> = _servers.asStateFlow()
-
-    init {
-        refreshServers()
-    }
 
     fun setSelectedEngine(engineId: String) {
         _selectedEngineId.value = engineId
@@ -85,44 +71,29 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         _wireGuardConfigText.value = newText
     }
 
+    /** Server inventory is intentionally empty until real, operator-provided endpoints exist. */
     fun refreshServers() {
-        val rawMeasurements = listOf(
-            Triple("wg-de-1", "Germany (Frankfurt)", "\uD83C\uDDE9\uD83C\uDDEA") to RouteMeasurement("wireguard", true, 38L, 0.0, 99.0, userPriority = 5),
-            Triple("wg-nl-1", "Netherlands (Amsterdam)", "\uD83C\uDDF3\uD83C\uDDF1") to RouteMeasurement("wireguard", true, 45L, 0.2, 98.0, userPriority = 0),
-            Triple("wg-fi-1", "Finland (Helsinki)", "\uD83C\uDDEB\uD83C\uDDEE") to RouteMeasurement("wireguard", true, 68L, 0.0, 96.0, userPriority = 0),
-            Triple("wg-us-1", "USA (New York)", "\uD83C\uDDFA\uD83C\uDDF8") to RouteMeasurement("wireguard", true, 115L, 1.0, 92.0, userPriority = -5)
-        )
-
-        val items = rawMeasurements.map { (meta, measurement) ->
-            val score = RouteScorer.score(measurement)
-            ServerItem(
-                id = meta.first,
-                name = meta.second,
-                country = meta.second,
-                flagEmoji = meta.third,
-                measurement = measurement,
-                score = score
-            )
-        }.sortedByDescending { it.score.score }
-
-        _servers.value = items
+        _servers.value = emptyList()
     }
 
     fun onConnectClicked(context: Context) {
         val engineId = _selectedEngineId.value
-        val configPayload = _wireGuardConfigText.value.toByteArray(Charsets.UTF_8)
-        val config = EngineConfiguration(configPayload)
-
-        // Validate configuration first
+        val config = EngineConfiguration(_wireGuardConfigText.value.toByteArray(Charsets.UTF_8))
         val adapter = coordinator.getAdapter(engineId)
         if (adapter == null) {
-            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("Unsupported engine: $engineId")) }
+            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("Unsupported engine")) }
             return
         }
 
         viewModelScope.launch {
+            when (val validation = adapter.validate(config)) {
+                is ValidationResult.Invalid -> {
+                    _effects.emit(VpnUiEffect.ShowToast("A valid WireGuard profile is required"))
+                    return@launch
+                }
+                ValidationResult.Valid -> Unit
+            }
             coordinator.requestConnect(engineId, config)
-
             val vpnIntent = VpnService.prepare(context)
             if (vpnIntent != null) {
                 _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
@@ -134,12 +105,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onPermissionResult(isGranted: Boolean) {
         if (isGranted) {
-            val engineId = _selectedEngineId.value
-            val configPayload = _wireGuardConfigText.value.toByteArray(Charsets.UTF_8)
-            coordinator.onVpnPermissionGranted(engineId, EngineConfiguration(configPayload))
+            val config = EngineConfiguration(_wireGuardConfigText.value.toByteArray(Charsets.UTF_8))
+            coordinator.onVpnPermissionGranted(_selectedEngineId.value, config)
         } else {
             viewModelScope.launch {
-                _effects.emit(VpnUiEffect.ShowToast("VPN permission denied by user"))
+                _effects.emit(VpnUiEffect.ShowToast("VPN permission denied"))
             }
             coordinator.disconnect()
         }
@@ -147,21 +117,5 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onDisconnectClicked() {
         coordinator.disconnect()
-    }
-
-    companion object {
-        val DEFAULT_WG_CONFIG = """
-            [Interface]
-            PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
-            Address = 10.200.0.2/32
-            DNS = 1.1.1.1, 8.8.8.8
-            MTU = 1420
-
-            [Peer]
-            PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
-            Endpoint = 198.51.100.1:51820
-            AllowedIPs = 0.0.0.0/0, ::/0
-            PersistentKeepalive = 25
-        """.trimIndent()
     }
 }
