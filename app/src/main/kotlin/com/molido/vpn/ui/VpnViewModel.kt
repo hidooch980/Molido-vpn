@@ -3,6 +3,7 @@ package com.molido.vpn.ui
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,6 +17,10 @@ import com.molido.vpn.policy.RouteMeasurement
 import com.molido.vpn.policy.RouteScore
 import com.molido.vpn.policy.RouteScorer
 import com.molido.vpn.verifier.NetworkTrafficVerifier
+import com.molido.vpn.updater.AppUpdateInfo
+import com.molido.vpn.updater.AppUpdateManager
+import com.molido.vpn.updater.UpdateCheckResult
+import java.io.File
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -36,9 +41,17 @@ data class ServerItem(
 sealed interface VpnUiEffect {
     data class RequestVpnPermission(val intent: Intent) : VpnUiEffect
     data class ShowToast(val message: String) : VpnUiEffect
+    data class OpenSettings(val intent: Intent) : VpnUiEffect
 }
 
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val updateManager = AppUpdateManager(application)
+    private val _updateStatus = MutableStateFlow("Checking for updates…")
+    val updateStatus: StateFlow<String> = _updateStatus.asStateFlow()
+    private val _availableUpdate = MutableStateFlow<AppUpdateInfo?>(null)
+    val availableUpdate: StateFlow<AppUpdateInfo?> = _availableUpdate.asStateFlow()
+    private var downloadedUpdate: File? = null
 
     private val wireguardAdapter = WireGuardEngineAdapter(application)
 
@@ -50,6 +63,56 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
     val diagnostics: StateFlow<ConnectionDiagnostics> = coordinator.diagnostics
+    init { checkForUpdates() }
+
+    fun checkForUpdates() {
+        viewModelScope.launch {
+            _updateStatus.value = "Checking official MolidoVPN releases…"
+            when (val result = updateManager.check()) {
+                UpdateCheckResult.UpToDate -> {
+                    _availableUpdate.value = null
+                    _updateStatus.value = "App and bundled VPN cores are up to date"
+                }
+                is UpdateCheckResult.Available -> {
+                    _availableUpdate.value = result.update
+                    _updateStatus.value = "Version ${result.update.versionName} is available"
+                }
+                is UpdateCheckResult.Failed -> _updateStatus.value = "Update check unavailable: ${result.reason}"
+            }
+        }
+    }
+
+    fun downloadUpdate() {
+        val update = _availableUpdate.value ?: return
+        viewModelScope.launch {
+            _updateStatus.value = "Downloading and verifying update…"
+            updateManager.downloadAndVerify(update).onSuccess { apk ->
+                downloadedUpdate = apk
+                _updateStatus.value = "Verified update downloaded. Ready to install."
+            }.onFailure { error ->
+                downloadedUpdate = null
+                _updateStatus.value = "Update rejected: ${error.message ?: "verification failed"}"
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val apk = downloadedUpdate ?: return
+        updateManager.requestInstall(apk).onSuccess {
+            _updateStatus.value = "Android installer opened. Confirm installation to continue."
+        }.onFailure { error ->
+            if (error is AppUpdateManager.InstallPermissionRequired) {
+                val app = getApplication<Application>()
+                val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                viewModelScope.launch { _effects.emit(VpnUiEffect.OpenSettings(intent)) }
+                _updateStatus.value = "Allow MolidoVPN to install its verified updates, then return here."
+            } else {
+                _updateStatus.value = "Could not start installer: ${error.message}"
+            }
+        }
+    }
+
 
     private val _effects = MutableSharedFlow<VpnUiEffect>()
     val effects: SharedFlow<VpnUiEffect> = _effects.asSharedFlow()
