@@ -223,6 +223,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                             unselectedIconColor = Color(0xFF91AEB2),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
+                    )
                     NavigationDrawerItem(
                         label = { Text(if (language == AppLanguage.PERSIAN) "سرورها و پروفایل‌ها" else "Servers & Profiles") },
                         selected = selectedTab == 1,
