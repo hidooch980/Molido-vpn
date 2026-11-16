@@ -14,11 +14,15 @@ import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
+import com.molido.vpn.engine.hysteria.Hysteria2EngineAdapter
+import com.molido.vpn.engine.warp.CleanIpResult
+import com.molido.vpn.engine.warp.CleanIpScanner
 import com.molido.vpn.engine.warp.WarpEngineAdapter
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.engine.xray.XrayEngineAdapter
 import com.molido.vpn.importer.ConfigImporter
 import com.molido.vpn.importer.SubscriptionManager
+import com.molido.vpn.ping.BatchPingTester
 import com.molido.vpn.policy.AppInfo
 import com.molido.vpn.policy.RouteMeasurement
 import com.molido.vpn.policy.RouteScore
@@ -59,6 +63,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter()
     private val warpAdapter = WarpEngineAdapter()
+    private val hysteriaAdapter = Hysteria2EngineAdapter()
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
@@ -67,7 +72,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
             xrayAdapter.id to xrayAdapter,
-            warpAdapter.id to warpAdapter
+            warpAdapter.id to warpAdapter,
+            hysteriaAdapter.id to hysteriaAdapter
         ),
         onVpnInterfaceRequested = { engineId, config ->
             val context = getApplication<Application>()
@@ -115,6 +121,15 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isFetchingCommunity = MutableStateFlow(false)
     val isFetchingCommunity: StateFlow<Boolean> = _isFetchingCommunity.asStateFlow()
+
+    private val _isPinging = MutableStateFlow(false)
+    val isPinging: StateFlow<Boolean> = _isPinging.asStateFlow()
+
+    private val _isScanningCleanIps = MutableStateFlow(false)
+    val isScanningCleanIps: StateFlow<Boolean> = _isScanningCleanIps.asStateFlow()
+
+    private val _cleanIps = MutableStateFlow<List<CleanIpResult>>(emptyList())
+    val cleanIps: StateFlow<List<CleanIpResult>> = _cleanIps.asStateFlow()
 
     init {
         loadInstalledApps()
@@ -246,6 +261,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
         val mockMetrics = mapOf(
             "free-warp-global" to RouteMeasurement("warp", true, 26L, 0.0, 99.0, userPriority = 10),
+            "free-hysteria2-1" to RouteMeasurement("hysteria2", true, 38L, 0.0, 99.0, userPriority = 9),
             "free-reality-1" to RouteMeasurement("xray", true, 42L, 0.0, 98.0, userPriority = 8),
             "free-reality-2" to RouteMeasurement("xray", true, 48L, 0.1, 98.0, userPriority = 7),
             "free-amnezia-1" to RouteMeasurement("amnezia", true, 55L, 0.0, 97.0, userPriority = 6),
@@ -321,6 +337,123 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 _effects.emit(VpnUiEffect.ShowToast(msg))
             }
             coordinator.disconnect()
+        }
+    }
+
+    fun pingAllServers() {
+        viewModelScope.launch {
+            if (_isPinging.value) return@launch
+            _isPinging.value = true
+            val startMsg = if (_language.value == AppLanguage.PERSIAN) "در حال تست پینگ تمام سرورها..." else "Pinging all servers..."
+            _effects.emit(VpnUiEffect.ShowToast(startMsg))
+
+            try {
+                val currentServers = _servers.value
+                val profiles = currentServers.map {
+                    FreeServerProfile(
+                        id = it.id,
+                        name = it.name,
+                        engineId = it.engineId,
+                        country = it.country,
+                        flagEmoji = it.flagEmoji,
+                        rawPayload = it.payload,
+                        isFree = it.isFree
+                    )
+                }
+
+                val pingResults = BatchPingTester.pingAll(profiles)
+
+                val updatedServers = currentServers.map { server ->
+                    val ping = pingResults[server.id]
+                    if (ping != null && ping.isReachable) {
+                        val measurement = server.measurement.copy(
+                            reachable = true,
+                            latencyMillis = ping.latencyMillis,
+                            packetLossPercent = 0.0
+                        )
+                        server.copy(
+                            measurement = measurement,
+                            score = RouteScorer.score(measurement)
+                        )
+                    } else {
+                        // Mark unreachable / high penalty
+                        val measurement = server.measurement.copy(
+                            reachable = false,
+                            latencyMillis = 999L,
+                            packetLossPercent = 100.0
+                        )
+                        server.copy(
+                            measurement = measurement,
+                            score = RouteScorer.score(measurement)
+                        )
+                    }
+                }.sortedByDescending { it.score.score }
+
+                _servers.value = updatedServers
+                val reachableCount = updatedServers.count { it.measurement.reachable }
+                val doneMsg = if (_language.value == AppLanguage.PERSIAN) {
+                    "تست پینگ به پایان رسید: $reachableCount سرور فعال یافت شد"
+                } else {
+                    "Ping test complete: $reachableCount active servers"
+                }
+                _effects.emit(VpnUiEffect.ShowToast(doneMsg))
+            } catch (e: Exception) {
+                _effects.emit(VpnUiEffect.ShowToast("خطا در پینگ: ${e.message}"))
+            } finally {
+                _isPinging.value = false
+            }
+        }
+    }
+
+    fun scanCleanIps() {
+        viewModelScope.launch {
+            if (_isScanningCleanIps.value) return@launch
+            _isScanningCleanIps.value = true
+            val startMsg = if (_language.value == AppLanguage.PERSIAN) "در حال اسکن آی‌پی‌های تمیز کلودفلر..." else "Scanning Cloudflare clean IPs..."
+            _effects.emit(VpnUiEffect.ShowToast(startMsg))
+
+            try {
+                val results = CleanIpScanner.scanCleanIps()
+                _cleanIps.value = results
+                val msg = if (_language.value == AppLanguage.PERSIAN) {
+                    "${results.size} آی‌پی تمیز و بدون فیلتر پیدا شد"
+                } else {
+                    "Found ${results.size} clean unblocked IPs"
+                }
+                _effects.emit(VpnUiEffect.ShowToast(msg))
+            } catch (e: Exception) {
+                _effects.emit(VpnUiEffect.ShowToast("خطا در اسکن: ${e.message}"))
+            } finally {
+                _isScanningCleanIps.value = false
+            }
+        }
+    }
+
+    fun applyCleanIpToWarp(cleanIp: String) {
+        viewModelScope.launch {
+            try {
+                val currentWarpPayload = _servers.value.firstOrNull { it.engineId == "warp" }?.payload
+                    ?: _activeConfigText.value
+
+                val updatedConfig = CleanIpScanner.applyCleanIpToWarpConfig(currentWarpPayload, cleanIp)
+                updateActiveConfig(updatedConfig)
+                setSelectedEngine("warp")
+
+                // Update server entry in list
+                val updatedServers = _servers.value.map {
+                    if (it.engineId == "warp") it.copy(payload = updatedConfig) else it
+                }
+                _servers.value = updatedServers
+
+                val msg = if (_language.value == AppLanguage.PERSIAN) {
+                    "آی‌پی تمیز $cleanIp روی پروفایل وارپ اعمال شد"
+                } else {
+                    "Clean IP $cleanIp applied to WARP"
+                }
+                _effects.emit(VpnUiEffect.ShowToast(msg))
+            } catch (e: Exception) {
+                _effects.emit(VpnUiEffect.ShowToast("خطا در اعمال آی‌پی: ${e.message}"))
+            }
         }
     }
 

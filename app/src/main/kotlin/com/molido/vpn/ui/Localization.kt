@@ -41,7 +41,15 @@ data class AppStrings(
     val activeConfigTitle: String,
     val languageLabel: String,
     val scoreLabel: String,
-    val enginesTitle: String
+    val enginesTitle: String,
+    val pingAllButton: String,
+    val pingingStatus: String,
+    val cleanIpTitle: String,
+    val cleanIpDesc: String,
+    val cleanIpAction: String,
+    val cleanIpScanning: String,
+    val cleanIpApply: String,
+    val cleanIpApplied: String
 )
 
 object Localization {
@@ -82,7 +90,15 @@ object Localization {
         activeConfigTitle = "پروفایل و کانفیگ فعال",
         languageLabel = "زبان برنامه",
         scoreLabel = "امتیاز",
-        enginesTitle = "پروتکل‌ها و موتورهای فعال"
+        enginesTitle = "پروتکل‌ها و موتورهای فعال",
+        pingAllButton = "تست پینگ همه",
+        pingingStatus = "در حال تست پینگ...",
+        cleanIpTitle = "اسکنر آی‌پی تمیز کلودفلر (WARP)",
+        cleanIpDesc = "اسکن و یافتن سریع‌ترین آی‌پی‌های بدون فیلتر کلودفلر برای اتصال فوق پایدار",
+        cleanIpAction = "شروع اسکن آی‌پی تمیز",
+        cleanIpScanning = "در حال اسکن سرورهای کلودفلر...",
+        cleanIpApply = "اعمال روی وارپ",
+        cleanIpApplied = "آی‌پی تمیز روی پروفایل وارپ اعمال شد"
     )
 
     val EN = AppStrings(
@@ -121,7 +137,15 @@ object Localization {
         activeConfigTitle = "Active Configuration Profile",
         languageLabel = "App Language",
         scoreLabel = "Score",
-        enginesTitle = "Supported Engines"
+        enginesTitle = "Supported Engines",
+        pingAllButton = "Ping All",
+        pingingStatus = "Testing Ping...",
+        cleanIpTitle = "Cloudflare Clean IP Scanner",
+        cleanIpDesc = "Discover unblocked low-latency Cloudflare IPs for ultra-reliable WARP routing",
+        cleanIpAction = "Scan Clean IPs",
+        cleanIpScanning = "Scanning Cloudflare endpoints...",
+        cleanIpApply = "Apply to WARP",
+        cleanIpApplied = "Clean IP successfully applied to WARP profile"
     )
 
     fun get(lang: AppLanguage): AppStrings = when (lang) {

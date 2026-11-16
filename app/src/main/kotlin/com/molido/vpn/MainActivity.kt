@@ -152,6 +152,9 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val splitApps by viewModel.splitApps.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
+    val isPinging by viewModel.isPinging.collectAsState()
+    val isScanningCleanIps by viewModel.isScanningCleanIps.collectAsState()
+    val cleanIps by viewModel.cleanIps.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -239,7 +242,9 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     strings = strings,
                     servers = servers,
                     isFetching = isFetchingCommunity,
+                    isPinging = isPinging,
                     onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
+                    onPingAll = { viewModel.pingAllServers() },
                     onSelectServer = { viewModel.selectServer(it) },
                     onImportClipboard = {
                         val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -270,7 +275,11 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     installedApps = installedApps,
                     onToggleApp = { viewModel.toggleAppExclusion(it) },
                     activeConfigText = activeConfigText,
-                    onUpdateConfig = { viewModel.updateActiveConfig(it) }
+                    onUpdateConfig = { viewModel.updateActiveConfig(it) },
+                    isScanningCleanIps = isScanningCleanIps,
+                    cleanIps = cleanIps,
+                    onScanCleanIps = { viewModel.scanCleanIps() },
+                    onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) }
                 )
             }
         }
@@ -374,7 +383,13 @@ fun SmartAutoEngineSelector(
             FilterChip(
                 selected = selectedEngine == "warp",
                 onClick = { onSelect("warp") },
-                label = { Text("WARP (Free)") },
+                label = { Text("WARP") },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = selectedEngine == "hysteria2",
+                onClick = { onSelect("hysteria2") },
+                label = { Text("Hysteria 2") },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
@@ -410,7 +425,9 @@ fun ServersTab(
     strings: AppStrings,
     servers: List<ServerItem>,
     isFetching: Boolean,
+    isPinging: Boolean,
     onUpdateFromGithub: () -> Unit,
+    onPingAll: () -> Unit,
     onSelectServer: (ServerItem) -> Unit,
     onImportClipboard: () -> Unit
 ) {
@@ -421,37 +438,54 @@ fun ServersTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Update from GitHub community button
-                Button(
-                    onClick = onUpdateFromGithub,
-                    enabled = !isFetching,
-                    modifier = Modifier.weight(1.3f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (isFetching) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                        Spacer(Modifier.width(6.dp))
-                        Text(strings.updatingGithub, fontSize = 11.sp)
-                    } else {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(strings.updateFromGithub, fontSize = 12.sp)
+                    // Update from GitHub community button
+                    Button(
+                        onClick = onUpdateFromGithub,
+                        enabled = !isFetching,
+                        modifier = Modifier.weight(1.2f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                    ) {
+                        if (isFetching) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.updatingGithub, fontSize = 11.sp)
+                        } else {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.updateFromGithub, fontSize = 12.sp)
+                        }
                     }
-                }
 
-                OutlinedButton(
-                    onClick = onImportClipboard,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(strings.clipboardButton, fontSize = 12.sp)
+                    // Batch Ping Button
+                    OutlinedButton(
+                        onClick = onPingAll,
+                        enabled = !isPinging,
+                        modifier = Modifier.weight(1.1f)
+                    ) {
+                        if (isPinging) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF38BDF8), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.pingingStatus, fontSize = 11.sp)
+                        } else {
+                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(strings.pingAllButton, fontSize = 12.sp)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onImportClipboard,
+                        modifier = Modifier.weight(0.9f)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(strings.clipboardButton, fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -465,6 +499,18 @@ fun ServersTab(
         }
 
         items(servers) { server ->
+            val latencyColor = when {
+                !server.measurement.reachable -> Color(0xFFEF4444)
+                server.measurement.latencyMillis < 80 -> Color(0xFF10B981)
+                server.measurement.latencyMillis < 180 -> Color(0xFFF59E0B)
+                else -> Color(0xFFF97316)
+            }
+            val latencyText = if (!server.measurement.reachable) {
+                "قطع / Timeout"
+            } else {
+                "${server.measurement.latencyMillis} ms"
+            }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -495,11 +541,19 @@ fun ServersTab(
                                     Text("FREE", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                 }
                             }
-                            Text(
-                                "${server.engineId.uppercase()} • ${server.measurement.latencyMillis} ms",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF94A3B8)
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "${server.engineId.uppercase()} • ",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF94A3B8)
+                                )
+                                Text(
+                                    latencyText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = latencyColor,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
 
@@ -536,7 +590,11 @@ fun SecuritySettingsTab(
     installedApps: List<com.molido.vpn.policy.AppInfo>,
     onToggleApp: (String) -> Unit,
     activeConfigText: String,
-    onUpdateConfig: (String) -> Unit
+    onUpdateConfig: (String) -> Unit,
+    isScanningCleanIps: Boolean,
+    cleanIps: List<com.molido.vpn.engine.warp.CleanIpResult>,
+    onScanCleanIps: () -> Unit,
+    onApplyCleanIp: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -644,6 +702,66 @@ fun SecuritySettingsTab(
                             Column {
                                 Text(provider.name, fontWeight = FontWeight.Medium)
                                 Text(provider.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cloudflare Clean IP Scanner Section
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(strings.cleanIpTitle, fontWeight = FontWeight.Bold)
+                    Text(strings.cleanIpDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = onScanCleanIps,
+                        enabled = !isScanningCleanIps,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
+                    ) {
+                        if (isScanningCleanIps) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(strings.cleanIpScanning, fontSize = 12.sp)
+                        } else {
+                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(strings.cleanIpAction, fontSize = 13.sp)
+                        }
+                    }
+
+                    if (cleanIps.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            if (currentLanguage == AppLanguage.PERSIAN) "آی‌پی‌های تمیز با کمترین پینگ:" else "Discovered Clean Endpoints:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF38BDF8),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        for (clean in cleanIps.take(4)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(clean.ip, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("${clean.latencyMillis} ms", fontSize = 11.sp, color = Color(0xFF10B981), fontWeight = FontWeight.Bold)
+                                }
+                                TextButton(onClick = { onApplyCleanIp(clean.ip) }) {
+                                    Text(strings.cleanIpApply, fontSize = 12.sp, color = Color(0xFF38BDF8))
+                                }
                             }
                         }
                     }

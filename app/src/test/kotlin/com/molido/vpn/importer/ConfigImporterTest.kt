@@ -50,4 +50,13 @@ class ConfigImporterTest {
         val imported = ConfigImporter.detectAndParse(config)
         assertEquals("wireguard", imported.engineId)
     }
+
+    @Test
+    fun detectHysteria2Scheme() {
+        val uri = "hy2://password@example.com:443/?sni=example.com#Hy2Node"
+        val imported = ConfigImporter.detectAndParse(uri)
+
+        assertEquals("hysteria2", imported.engineId)
+        assertEquals("Hy2Node", imported.name)
+    }
 }

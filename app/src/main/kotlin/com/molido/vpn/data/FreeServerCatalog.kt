@@ -64,6 +64,8 @@ object FreeServerCatalog {
             PersistentKeepalive = 25
         """.trimIndent()
 
+        val sampleHysteria2 = "hy2://molido-free-token@185.190.140.5:443/?insecure=1&sni=speed.cloudflare.com&obfs=salamander&obfs-password=molido#Free-Hysteria2-QUIC"
+
         return listOf(
             FreeServerProfile(
                 id = "free-warp-global",
@@ -104,6 +106,14 @@ object FreeServerCatalog {
                 country = "Sweden",
                 flagEmoji = "\uD83C\uDDF8\uD83C\uDDEA",
                 rawPayload = sampleWireguard
+            ),
+            FreeServerProfile(
+                id = "free-hysteria2-1",
+                name = "Hysteria 2 QUIC (Anti-DPI UltraFast)",
+                engineId = "hysteria2",
+                country = "Germany",
+                flagEmoji = "\uD83C\uDDE9\uD83C\uDDEA",
+                rawPayload = sampleHysteria2
             )
         )
     }

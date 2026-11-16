@@ -181,6 +181,12 @@ class MolidoVpnService : VpnService() {
                     .addAddress("172.19.0.1", 30)
                     .addRoute("0.0.0.0", 0)
             }
+            "hysteria2" -> {
+                // Hysteria 2 QUIC tun mode route mapping
+                builder.setMtu(1380)
+                    .addAddress("172.19.0.1", 30)
+                    .addRoute("0.0.0.0", 0)
+            }
             else -> {
                 applyDefaultTunParameters(builder)
             }
