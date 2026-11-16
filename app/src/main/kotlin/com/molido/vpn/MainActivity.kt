@@ -213,8 +213,19 @@ fun MainScreen(viewModel: VpnViewModel) {
                 )
             }
 
-            items(servers) { server ->
-                ServerRouteCard(server = server)
+            if (servers.isEmpty()) {
+                item {
+                    Text(
+                        "No verified server profiles are configured. Import your own WireGuard .conf profile to connect.",
+                        color = Color(0xFFF59E0B),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+            } else {
+                items(servers) { server ->
+                    ServerRouteCard(server = server)
+                }
             }
 
             item {
@@ -374,7 +385,8 @@ fun DiagnosticsCard(diagnostics: ConnectionDiagnostics, connectionState: Connect
             Spacer(modifier = Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 DiagnosticItem("Egress Verification", if (connectionState is ConnectionState.Connected) "Passed" else "Pending")
-                DiagnosticItem("Latency", "${diagnostics.lastLatencyMillis ?: 0} ms")
+                DiagnosticItem("Public egress IP", diagnostics.publicEgressIp ?: "Not verified")
+                DiagnosticItem("Latency", diagnostics.lastLatencyMillis?.let { "$it ms" } ?: "—")
                 DiagnosticItem("Bytes In/Out", "${diagnostics.bytesIn / 1024}k / ${diagnostics.bytesOut / 1024}k")
             }
         }
