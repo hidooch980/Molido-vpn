@@ -2,51 +2,33 @@
 
 Independent Android VPN client focused on reliable, privacy-preserving multi-engine connectivity.
 
-> Status: architecture baseline. No VPN engine is advertised as operational until its adapter, licensing, configuration, device tests, and traffic-path verification are complete.
+> Current status: WireGuard's official Android tunnel backend is wired into the hardening branch. This is an integration change, not a device-verified release. No APK is being distributed from this work branch.
 
 ## Product goals
 - Native Android app using Kotlin and Jetpack Compose.
-- Android `VpnService` owns the device VPN interface and lifecycle.
-- Rust core for policy, health scoring, and engine orchestration where it provides a measurable benefit.
-- Pluggable engine adapters with explicit capability and license metadata.
-- Adaptive route selection based on measured reachability, latency, loss, stability, and user policy.
-- DNS protection, IPv4/IPv6 leak controls, kill switch guidance, split tunneling, and transparent connection diagnostics.
-- Signed releases and safe in-app update checks; signing secrets never enter source control.
+- The official WireGuard Android tunnel library provides the first real userspace transport.
+- Engine adapters have explicit capability and lifecycle contracts.
+- The UI reports Connected only after the backend starts and an HTTPS public-egress IP check succeeds.
+- DNS protection, IPv4/IPv6 leak controls, kill-switch behavior, split tunneling, and diagnostics must be verified on real devices before production.
+- Country/IP geolocation is approximate metadata and must never be fabricated.
 
-## Repository principles
-1. Keep this repository independent from the legacy MolidoVPN Android repository.
-2. Reuse upstream engines only under compatible licenses and with required notices/source offers.
-3. Never embed private API keys, signing keys, passwords, or shared HMAC secrets in the APK.
-4. Never report a tunnel as connected until traffic is verified through the VPN interface and external egress checks pass.
-5. Fail closed when the user enables lockdown/kill-switch behavior and the tunnel cannot be maintained.
-6. Treat country/IP geolocation as best-effort metadata, not proof of physical server location.
+## Security and release principles
+1. Never report a VPN connection from TUN creation or a UI event alone.
+2. Never ship placeholder profiles, synthetic server inventories, mock IPs, or simulated route measurements as live data.
+3. Keep signing keys and credentials outside source control. Reuse the existing owner keystore only after secure verification.
+4. Never silently fall back to an unencrypted/default TUN after profile parsing fails.
+5. A production engine requires pinned upstream code, license notices, automated tests, and Android device verification.
+6. No release APK until all acceptance gates pass.
 
-## Planned engine families
-- WireGuard
-- Xray-core (protocols supported by the selected upstream build, such as VLESS/VMess/Trojan where legally and technically appropriate)
-- AmneziaWG (only with compatible client/server configuration)
-- MASQUE / CONNECT-IP over HTTP/3 (implementation subject to a maintained compatible stack)
-- Cloudflare WARP (officially supported integration only; no impersonation or unsupported account/API use)
-- Psiphon (subject to upstream SDK/API and redistribution terms)
-- Tor (official Tor implementation and bridge support where supported)
-- SHARD (research track; not a shipping engine until a concrete, maintained, auditable implementation and protocol specification are identified)
+## Engine status
+- WireGuard: official com.wireguard.android:tunnel dependency integrated on the hardening branch; real device verification remains pending.
+- Xray-core, AmneziaWG, MASQUE/CONNECT-IP, WARP, Psiphon, Tor: not integrated; each requires separate feasibility, license, and security review.
+- SHARD: research only until a concrete maintained implementation and protocol specification are available.
 
-The engine list is a target capability matrix, not a claim that all engines are already implemented.
+## Build and validation
+Run ./gradlew testDebugUnitTest, ./gradlew lint, and ./gradlew assembleDebug.
 
-## Documentation
-- [Architecture](docs/architecture.md)
-- [Engine matrix](docs/engine-matrix.md)
-- [Security model](SECURITY.md)
-- [Roadmap](ROADMAP.md)
+Debug builds are CI validation artifacts only and are not product releases.
 
-## Build & Test
-```bash
-# Run unit tests
-./gradlew testDebugUnitTest
-
-# Build debug APK
-./gradlew assembleDebug
-```
-
-## Build status
-Phase 1 foundation complete: Android `VpnService` lifecycle, foreground notification, TUN configuration, `ConnectionCoordinator`, traffic verification pipeline, and initial WireGuard engine parser/adapter are implemented and tested. See [Roadmap](ROADMAP.md).
+## Release gate
+A signed release requires: successful CI, dependency/license review, SBOM and vulnerability review, real Android connect/disconnect/reconnect tests, public IPv4/IPv6 egress checks, DNS leak tests, kill-switch/lockdown tests, network handover and process-death recovery, privacy review, and verification of the owner's existing signing key.
