@@ -47,20 +47,22 @@ class WireGuardEngineAdapterTest {
     }
 
     @Test
-    fun connectEmitsTransportReadyAndReturnsSession() = runBlocking {
+    fun connectFailsClosedUntilRealGoBackendIsIntegrated() = runBlocking {
         val adapter = WireGuardEngineAdapter()
         val events = mutableListOf<EngineEvent>()
+        var failed = false
+        try {
+            adapter.connect(
+                configuration = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)),
+                protectSocket = { true },
+                onEvent = { events.add(it) }
+            )
+        } catch (e: UnsupportedOperationException) {
+            failed = e.message == "WIREGUARD_BACKEND_NOT_INTEGRATED"
+        }
 
-        val session = adapter.connect(
-            configuration = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)),
-            protectSocket = { true },
-            onEvent = { events.add(it) }
-        )
-
-        assertEquals("wireguard", session.engineId)
+        assertTrue("WireGuard must not report a fake transport-ready event", failed)
         assertEquals(1, events.size)
-        assertTrue(events[0] is EngineEvent.TransportReady)
-
-        adapter.disconnect(session)
+        assertTrue(events[0] is EngineEvent.Failed)
     }
 }
