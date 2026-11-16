@@ -52,6 +52,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _availableUpdate = MutableStateFlow<AppUpdateInfo?>(null)
     val availableUpdate: StateFlow<AppUpdateInfo?> = _availableUpdate.asStateFlow()
     private var downloadedUpdate: File? = null
+    private val _updateReady = MutableStateFlow(false)
+    val updateReady: StateFlow<Boolean> = _updateReady.asStateFlow()
 
     private val wireguardAdapter = WireGuardEngineAdapter(application)
 
@@ -75,7 +77,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 is UpdateCheckResult.Available -> {
                     _availableUpdate.value = result.update
-                    _updateStatus.value = "Version ${result.update.versionName} is available"
+                    _updateStatus.value = "Version ${result.update.versionName} is available; downloading securely…"
+                    downloadUpdate()
                 }
                 is UpdateCheckResult.Failed -> _updateStatus.value = "Update check unavailable: ${result.reason}"
             }
@@ -88,9 +91,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             _updateStatus.value = "Downloading and verifying update…"
             updateManager.downloadAndVerify(update).onSuccess { apk ->
                 downloadedUpdate = apk
-                _updateStatus.value = "Verified update downloaded. Ready to install."
+                _updateReady.value = true
+                _updateStatus.value = "Verified update downloaded. Ready for Android installation."
             }.onFailure { error ->
                 downloadedUpdate = null
+                _updateReady.value = false
                 _updateStatus.value = "Update rejected: ${error.message ?: "verification failed"}"
             }
         }
