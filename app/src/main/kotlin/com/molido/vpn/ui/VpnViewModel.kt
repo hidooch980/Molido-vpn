@@ -14,6 +14,8 @@ import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.engine.EngineConfiguration
+import com.molido.vpn.engine.EngineRuntimeCatalog
+import com.molido.vpn.engine.EngineReadiness
 import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
 import com.molido.vpn.engine.warp.WarpEngineAdapter
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
@@ -92,7 +94,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
     private val _activeConfigText = MutableStateFlow(
-        configStore.getActiveConfig() ?: FreeServerCatalog.getDefaultFreeServers()[0].rawPayload
+        configStore.getActiveConfig().orEmpty()
     )
     val activeConfigText: StateFlow<String> = _activeConfigText.asStateFlow()
 
@@ -210,17 +212,12 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshServers() {
-        val freeServers = FreeServerCatalog.getDefaultFreeServers()
+        val freeServers = emptyList<FreeServerProfile>() // Real provider profiles only; no fabricated demo endpoints.
 
-        val mockMetrics = mapOf(
-            "free-warp-global" to RouteMeasurement("warp", true, 28L, 0.0, 99.0, userPriority = 10),
-            "free-reality-1" to RouteMeasurement("xray", true, 54L, 0.1, 98.0, userPriority = 5),
-            "free-amnezia-1" to RouteMeasurement("amnezia", true, 62L, 0.0, 97.0, userPriority = 5),
-            "free-wireguard-1" to RouteMeasurement("wireguard", true, 75L, 0.5, 95.0, userPriority = 0)
-        )
+        // No synthetic measurements are eligible for AI route selection.
 
         val items = freeServers.map { profile ->
-            val measurement = mockMetrics[profile.id] ?: RouteMeasurement(profile.engineId, true, 80L, 0.0, 90.0)
+            val measurement = RouteMeasurement(profile.engineId, false, null, null, null)
             val score = RouteScorer.score(measurement)
             ServerItem(
                 id = profile.id,
@@ -241,6 +238,12 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         val engineId = _selectedEngineId.value
         val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
         val config = EngineConfiguration(configPayload)
+
+        val runtime = EngineRuntimeCatalog.find(engineId)
+        if (runtime == null || !runtime.selectable || runtime.readiness != EngineReadiness.PRODUCTION) {
+            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast(runtime?.releaseBlocker ?: "ENGINE_NOT_AVAILABLE")) }
+            return
+        }
 
         val adapter = coordinator.getAdapter(engineId)
         if (adapter == null) {
