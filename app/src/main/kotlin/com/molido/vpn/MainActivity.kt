@@ -108,6 +108,8 @@ import com.molido.vpn.ui.Localization
 import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
 import com.molido.vpn.ui.VpnViewModel
+import com.molido.vpn.update.UpdateInfo
+import com.molido.vpn.update.UpdateManager
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -169,6 +171,8 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val isPinging by viewModel.isPinging.collectAsState()
     val isScanningCleanIps by viewModel.isScanningCleanIps.collectAsState()
     val cleanIps by viewModel.cleanIps.collectAsState()
+    val updateInfo by viewModel.updateInfo.collectAsState()
+    val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -181,6 +185,52 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 is VpnUiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    if (updateInfo?.hasUpdate == true) {
+        val info = updateInfo!!
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissUpdateDialog() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = Color(0xFF42E2D7))
+                    Spacer(Modifier.width(8.dp))
+                    Text(strings.updateAvailable, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "${strings.currentVersionLabel}: v${info.currentVersion} ➔ v${info.latestVersion}",
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF10B981),
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (info.releaseNotes.isNotBlank()) {
+                        Text(info.releaseNotes, style = MaterialTheme.typography.bodySmall, color = Color(0xFFE2E8F0))
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        UpdateManager.openDownloadPage(context, info.downloadUrl)
+                        viewModel.dismissUpdateDialog()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                ) {
+                    Text(strings.updateDownloadAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                    Text(strings.updateLaterAction, color = Color(0xFF94A3B8))
+                }
+            },
+            containerColor = Color(0xFF0F242C),
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 
     ModalNavigationDrawer(
@@ -246,11 +296,24 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "بررسی به‌روزرسانی برنامه" else "Check for Updates") },
+                        selected = false,
+                        onClick = {
+                            viewModel.checkForUpdates(silent = false)
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = { Icon(Icons.Default.SystemUpdate, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF42E2D7),
+                            unselectedTextColor = Color(0xFFD3E2E4)
+                        )
+                    )
                     Spacer(Modifier.height(12.dp))
                     Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
                     DrawerPlannedItem(Icons.Default.AutoAwesome, if (language == AppLanguage.PERSIAN) "مسیریابی هوشمند AI" else "AI Smart Routing")
-                    DrawerPlannedItem(Icons.Default.SystemUpdate, if (language == AppLanguage.PERSIAN) "به‌روزرسانی هسته‌ها" else "Core Updates")
                     Spacer(Modifier.height(20.dp))
                     Text("PREMIUM • PRIVATE • SECURE", color = Color(0xFF3ABFB9), fontSize = 10.sp, letterSpacing = 1.sp)
                 }
@@ -333,7 +396,9 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         isScanningCleanIps = isScanningCleanIps,
                         cleanIps = cleanIps,
                         onScanCleanIps = { viewModel.scanCleanIps() },
-                        onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) }
+                        onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) },
+                        isCheckingUpdate = isCheckingUpdate,
+                        onCheckUpdate = { viewModel.checkForUpdates(silent = false) }
                     )
                 }
             }
@@ -774,7 +839,9 @@ fun SecuritySettingsTab(
     isScanningCleanIps: Boolean,
     cleanIps: List<com.molido.vpn.engine.warp.CleanIpResult>,
     onScanCleanIps: () -> Unit,
-    onApplyCleanIp: (String) -> Unit
+    onApplyCleanIp: (String) -> Unit,
+    isCheckingUpdate: Boolean,
+    onCheckUpdate: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -961,6 +1028,43 @@ fun SecuritySettingsTab(
                     Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                     Spacer(Modifier.height(8.dp))
                     Text("${splitApps.size} apps bypassed", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+        }
+
+        // App Version & Updates Section
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(strings.updateTitle, fontWeight = FontWeight.Bold)
+                            Text("${strings.currentVersionLabel}: v${UpdateManager.CURRENT_VERSION}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF38BDF8))
+                        }
+                        Button(
+                            onClick = onCheckUpdate,
+                            enabled = !isCheckingUpdate,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                        ) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text(strings.updateChecking, fontSize = 11.sp)
+                            } else {
+                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(strings.updateCheckAction, fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -34,14 +34,16 @@ jobs:
       - name: Build Release and Debug APKs
         run: |
           ./gradlew assembleDebug --stacktrace
-          # If signing is not configured in environment, debug APK is the verifiable CI output
-          cp app/build/outputs/apk/debug/app-debug.apk MolidoVPN-Debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk MolidoVPN-v0.1.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk MolidoVPN.apk
 
       - name: Create GitHub Release and Upload APK
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: MolidoVPN-Debug.apk
+          files: |
+            MolidoVPN-v0.1.0.apk
+            MolidoVPN.apk
           generate_release_notes: true
           draft: false
           prerelease: false

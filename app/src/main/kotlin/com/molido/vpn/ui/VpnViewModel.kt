@@ -29,6 +29,8 @@ import com.molido.vpn.policy.RouteMeasurement
 import com.molido.vpn.policy.RouteScore
 import com.molido.vpn.policy.RouteScorer
 import com.molido.vpn.policy.SplitTunnelManager
+import com.molido.vpn.update.UpdateInfo
+import com.molido.vpn.update.UpdateManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
 import com.molido.vpn.vpn.MolidoVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -132,9 +134,16 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _cleanIps = MutableStateFlow<List<CleanIpResult>>(emptyList())
     val cleanIps: StateFlow<List<CleanIpResult>> = _cleanIps.asStateFlow()
 
+    private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
+    val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
+
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
     init {
         loadInstalledApps()
         refreshServers()
+        checkForUpdates(silent = true)
     }
 
     fun setLanguage(lang: AppLanguage) {
@@ -460,5 +469,39 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onDisconnectClicked() {
         coordinator.disconnect()
+    }
+
+    fun checkForUpdates(silent: Boolean = false) {
+        viewModelScope.launch {
+            if (_isCheckingUpdate.value) return@launch
+            _isCheckingUpdate.value = true
+            if (!silent) {
+                val startMsg = if (_language.value == AppLanguage.PERSIAN) "در حال بررسی نسخه جدید در گیت‌هاب..." else "Checking for updates on GitHub..."
+                _effects.emit(VpnUiEffect.ShowToast(startMsg))
+            }
+            try {
+                val info = UpdateManager.checkUpdate()
+                _updateInfo.value = info
+                if (!silent) {
+                    if (info.hasUpdate) {
+                        val msg = if (_language.value == AppLanguage.PERSIAN) "نسخه جدید ${info.latestVersion} در دسترس است!" else "New version ${info.latestVersion} available!"
+                        _effects.emit(VpnUiEffect.ShowToast(msg))
+                    } else {
+                        val upToDateMsg = if (_language.value == AppLanguage.PERSIAN) "شما از آخرین نسخه استفاده می‌کنید (v${UpdateManager.CURRENT_VERSION})" else "MolidoVPN is up to date (v${UpdateManager.CURRENT_VERSION})"
+                        _effects.emit(VpnUiEffect.ShowToast(upToDateMsg))
+                    }
+                }
+            } catch (e: Exception) {
+                if (!silent) {
+                    _effects.emit(VpnUiEffect.ShowToast("خطا در بررسی آپدیت: ${e.message}"))
+                }
+            } finally {
+                _isCheckingUpdate.value = false
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _updateInfo.value = null
     }
 }

@@ -49,7 +49,15 @@ data class AppStrings(
     val cleanIpAction: String,
     val cleanIpScanning: String,
     val cleanIpApply: String,
-    val cleanIpApplied: String
+    val cleanIpApplied: String,
+    val updateTitle: String,
+    val updateAvailable: String,
+    val updateUpToDate: String,
+    val updateCheckAction: String,
+    val updateChecking: String,
+    val updateDownloadAction: String,
+    val updateLaterAction: String,
+    val currentVersionLabel: String
 )
 
 object Localization {
@@ -98,7 +106,15 @@ object Localization {
         cleanIpAction = "شروع اسکن آی‌پی تمیز",
         cleanIpScanning = "در حال اسکن سرورهای کلودفلر...",
         cleanIpApply = "اعمال روی وارپ",
-        cleanIpApplied = "آی‌پی تمیز روی پروفایل وارپ اعمال شد"
+        cleanIpApplied = "آی‌پی تمیز روی پروفایل وارپ اعمال شد",
+        updateTitle = "به‌روزرسانی نرم‌افزار",
+        updateAvailable = "نسخه جدید منتشر شد!",
+        updateUpToDate = "شما از آخرین نسخه برنامه استفاده می‌کنید",
+        updateCheckAction = "بررسی نسخه جدید",
+        updateChecking = "در حال بررسی گیت‌هاب برای نسخه جدید...",
+        updateDownloadAction = "دانلود و به‌روزرسانی",
+        updateLaterAction = "بعداً",
+        currentVersionLabel = "نسخه فعلی"
     )
 
     val EN = AppStrings(
@@ -145,7 +161,15 @@ object Localization {
         cleanIpAction = "Scan Clean IPs",
         cleanIpScanning = "Scanning Cloudflare endpoints...",
         cleanIpApply = "Apply to WARP",
-        cleanIpApplied = "Clean IP successfully applied to WARP profile"
+        cleanIpApplied = "Clean IP successfully applied to WARP profile",
+        updateTitle = "App Update",
+        updateAvailable = "New Version Available!",
+        updateUpToDate = "MolidoVPN is up to date",
+        updateCheckAction = "Check for Updates",
+        updateChecking = "Checking GitHub for updates...",
+        updateDownloadAction = "Download & Update",
+        updateLaterAction = "Later",
+        currentVersionLabel = "Current Version"
     )
 
     fun get(lang: AppLanguage): AppStrings = when (lang) {
