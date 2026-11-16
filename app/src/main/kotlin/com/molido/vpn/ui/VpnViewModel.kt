@@ -25,7 +25,6 @@ import com.molido.vpn.policy.RouteScore
 import com.molido.vpn.policy.RouteScorer
 import com.molido.vpn.policy.SplitTunnelManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
-import com.molido.vpn.vpn.MolidoVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -72,10 +71,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         // Fail closed: the current app service creates a bare TUN but has no
         // integrated packet-forwarding backend. Never treat that as a usable VPN.
         onVpnInterfaceRequested = { _, _ -> false },
-        onVpnInterfaceTornDown = {
-            val context = getApplication<Application>()
-            MolidoVpnService.stopService(context)
-        }
+        onVpnInterfaceTornDown = { }
     )
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
