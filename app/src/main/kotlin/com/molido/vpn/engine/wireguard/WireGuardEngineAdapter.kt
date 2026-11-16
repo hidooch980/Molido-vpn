@@ -24,7 +24,7 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
     override val id: String = "wireguard"
     override val displayName: String = "WireGuard"
 
-    override val capabilities: EngineCapabilities = EngineCapabilities(
+    override val capabilities = EngineCapabilities(
         supportsIpv4 = true,
         supportsIpv6 = true,
         supportsUdp = true,
@@ -38,9 +38,13 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
 
     private fun parse(configuration: EngineConfiguration): Config {
         require(configuration.opaquePayload.isNotEmpty()) { "WireGuard profile is empty" }
-        return ByteArrayInputStream(configuration.opaquePayload).use(Config::parse).also { config ->
-            require(config.peers.isNotEmpty()) { "WireGuard profile has no peers" }
-            require(config.interface.addresses.isNotEmpty()) { "WireGuard profile has no interface address" }
+        return ByteArrayInputStream(configuration.opaquePayload).use { stream ->
+            Config.parse(stream)
+        }.also { config ->
+            require(config.getPeers().isNotEmpty()) { "WireGuard profile has no peers" }
+            require(config.getInterface().getAddresses().isNotEmpty()) {
+                "WireGuard profile has no interface address"
+            }
         }
     }
 
@@ -50,7 +54,6 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
                 parse(configuration)
                 ValidationResult.Valid
             } catch (_: Exception) {
-                // Do not echo parser details: they may contain sensitive configuration data.
                 ValidationResult.Invalid("INVALID_WIREGUARD_PROFILE")
             }
         }
@@ -87,13 +90,8 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
     }
 
     private class MolidoTunnel : Tunnel {
-        @Volatile private var state: Tunnel.State = Tunnel.State.DOWN
-
         override fun getName(): String = "molido"
-
-        override fun onStateChange(newState: Tunnel.State) {
-            state = newState
-        }
+        override fun onStateChange(newState: Tunnel.State) = Unit
     }
 
     private class WireGuardSession(val tunnel: MolidoTunnel) : EngineSession {
