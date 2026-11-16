@@ -26,6 +26,25 @@ class ConnectionCoordinatorTest {
     """.trimIndent()
 
     @Test
+    fun unverifiedEngineIsRejectedBeforeAdapterOrTunStartup() = runTest {
+        val adapter = WireGuardEngineAdapter()
+        var tunRequested = false
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceRequested = { _, _ -> tunRequested = true; true }
+        )
+
+        coordinator.requestConnect("wireguard", EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)))
+        advanceUntilIdle()
+
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+        assertEquals("ENGINE_NOT_PRODUCTION_VERIFIED", (coordinator.state.value as ConnectionState.Failed).reasonCode)
+        assertEquals(false, tunRequested)
+    }
+
+    @Test
     fun successfulConnectionMovesThroughFullVerificationToConnected() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = true, simulatedLatency = 35L)
         val adapter = WireGuardEngineAdapter()
@@ -63,7 +82,9 @@ class ConnectionCoordinatorTest {
         val coordinator = ConnectionCoordinator(
             scope = this,
             trafficVerifier = mockVerifier,
-            adapters = mapOf(adapter.id to adapter)
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceRequested = { _, _ -> true },
+            isEngineProductionReady = { true } // Unit-test state transitions only.
         )
 
         val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
