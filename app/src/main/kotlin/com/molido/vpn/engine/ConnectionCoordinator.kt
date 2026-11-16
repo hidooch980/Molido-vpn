@@ -1,6 +1,8 @@
 package com.molido.vpn.engine
 
 import com.molido.vpn.verifier.TrafficVerifier
+import com.molido.vpn.engine.EngineRuntimeCatalog
+import com.molido.vpn.engine.EngineReadiness
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +25,10 @@ class ConnectionCoordinator(
     private val trafficVerifier: TrafficVerifier,
     private val adapters: Map<String, EngineAdapter>,
     private val onVpnInterfaceRequested: suspend (engineId: String, config: EngineConfiguration) -> Boolean = { _, _ -> true },
-    private val onVpnInterfaceTornDown: suspend () -> Unit = {}
+    private val onVpnInterfaceTornDown: suspend () -> Unit = {},
+    private val isEngineProductionReady: (String) -> Boolean = { engineId ->
+        EngineRuntimeCatalog.find(engineId)?.let { it.selectable && it.readiness == EngineReadiness.PRODUCTION } == true
+    }
 ) {
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -40,6 +45,10 @@ class ConnectionCoordinator(
     fun requestConnect(engineId: String, configuration: EngineConfiguration) {
         scope.launch {
             mutex.withLock {
+                if (!isEngineProductionReady(engineId)) {
+                    dispatch(ConnectionEvent.Fail("ENGINE_NOT_PRODUCTION_VERIFIED"))
+                    return@withLock
+                }
                 val adapter = adapters[engineId]
                 if (adapter == null) {
                     dispatch(ConnectionEvent.Fail("Unknown engine: $engineId"))
@@ -61,6 +70,10 @@ class ConnectionCoordinator(
         connectJob?.cancel()
         connectJob = scope.launch {
             mutex.withLock {
+                if (!isEngineProductionReady(engineId)) {
+                    dispatch(ConnectionEvent.Fail("ENGINE_NOT_PRODUCTION_VERIFIED"))
+                    return@withLock
+                }
                 val adapter = adapters[engineId] ?: return@withLock
                 dispatch(ConnectionEvent.PermissionGranted(engineId))
 
