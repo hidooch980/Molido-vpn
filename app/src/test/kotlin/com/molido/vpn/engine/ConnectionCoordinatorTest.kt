@@ -52,6 +52,7 @@ class ConnectionCoordinatorTest {
             scope = this,
             trafficVerifier = mockVerifier,
             adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceRequested = { _, _ -> true },
             isEngineProductionReady = { true } // Unit-test state transitions only.
         )
 
