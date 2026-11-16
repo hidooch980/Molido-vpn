@@ -352,33 +352,142 @@ fun ConnectTab(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
+    val isVerified = connectionState is ConnectionState.Connected
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            StatusCard(
-                strings = strings,
-                connectionState = connectionState,
-                selectedEngine = selectedEngine,
-                onConnect = onConnect,
-                onDisconnect = onDisconnect
-            )
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp)) {
+                Text(
+                    if (strings.appName == "MolidoVPN") "اتصال امن شما" else "Your secure connection",
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp
+                )
+                Text(
+                    if (strings.appName == "MolidoVPN") "وضعیت تونل و اطلاعات شبکه در یک نگاه" else "Tunnel and network status at a glance",
+                    color = Color(0xFF78999E), fontSize = 12.sp
+                )
+            }
         }
-
         item {
-            DiagnosticsCard(strings = strings, diagnostics = diagnostics, connectionState = connectionState)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B2028)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF15545A))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(18.dp).size(92.dp)
+                            .clip(RoundedCornerShape(50.dp)).background(Color(0xFF12B8B0).copy(alpha = 0.07f))
+                    )
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (strings.appName == "MolidoVPN") "وضعیت محافظت" else "PROTECTION STATUS", color = Color(0xFF9BB9BC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (isVerified) Color(0xFF0C594F) else Color(0xFF493A20)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                Text(if (isVerified) "VERIFIED" else "NOT CONNECTED", color = if (isVerified) Color(0xFF5BE0BD) else Color(0xFFFFCF70), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        StatusCard(strings, connectionState, selectedEngine, onConnect, onDisconnect)
+                    }
+                }
+            }
         }
-
         item {
-            SmartAutoEngineSelector(
-                strings = strings,
-                selectedEngine = selectedEngine,
-                onSelect = onSelectEngine
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                DashboardMetricCard(
+                    modifier = Modifier.weight(1f),
+                    title = if (strings.appName == "MolidoVPN") "IP خروجی" else "EXIT IP",
+                    value = "—",
+                    detail = if (isVerified) "در انتظار بررسی IP" else "پس از اتصال تأییدشده",
+                    icon = Icons.Default.Security
+                )
+                DashboardMetricCard(
+                    modifier = Modifier.weight(1f),
+                    title = if (strings.appName == "MolidoVPN") "موقعیت سرور" else "SERVER LOCATION",
+                    value = "—",
+                    detail = "داده واقعی هنوز موجود نیست",
+                    icon = Icons.Default.Language
+                )
+            }
         }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(if (strings.appName == "MolidoVPN") "عملکرد شبکه" else "NETWORK PERFORMANCE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        DashboardMetricCard(Modifier.weight(1f), "PING", diagnostics.lastLatencyMillis?.takeIf { isVerified }?.let { "$it ms" } ?: "—", "اندازه‌گیری واقعی", Icons.Default.Speed)
+                        DashboardMetricCard(Modifier.weight(1f), "DOWNLOAD", if (isVerified) "${diagnostics.bytesIn / 1024} KB" else "—", "ترافیک تونل", Icons.Default.CloudDownload)
+                        DashboardMetricCard(Modifier.weight(1f), "UPLOAD", if (isVerified) "${diagnostics.bytesOut / 1024} KB" else "—", "ترافیک تونل", Icons.Default.Sync)
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
+                    DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
+                    DashboardSecurityRow("Kill Switch", "وضعیت تنظیمات: ${if (isVerified) "فعال‌سازی/آزمون لازم" else "وابسته به تنظیمات"}", killSwitch = false)
+                }
+            }
+        }
+        item {
+            SmartAutoEngineSelector(strings = strings, selectedEngine = selectedEngine, onSelect = onSelectEngine)
+        }
+        item { Spacer(Modifier.height(18.dp)) }
+    }
+}
+
+@Composable
+private fun DashboardMetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    detail: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = Color(0xFF42D8D0), modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(title, color = Color(0xFF8BAEB2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(detail, color = Color(0xFF718F94), fontSize = 9.sp)
+        }
+    }
+}
+
+@Composable
+private fun DashboardSecurityRow(title: String, detail: String, needsTest: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF36CFC7), modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color(0xFFE5F1F2), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(detail, color = Color(0xFF7F9DA1), fontSize = 10.sp)
+        }
+        Text(if (needsTest) "TEST" else "PENDING", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
