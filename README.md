@@ -20,6 +20,13 @@ Independent Android VPN client focused on reliable, privacy-preserving multi-eng
 5. A production engine requires pinned upstream code, license notices, automated tests, and Android device verification.
 6. No release APK until all acceptance gates pass.
 
+## Automatic updates
+- The app checks the latest official GitHub Release when it starts and automatically downloads a newer APK when a release is available.
+- Before Android's installer is opened, the APK SHA-256 must match the GitHub release asset digest, the package ID must match the installed app, and the signing certificate must match the currently installed signing identity.
+- Android controls final installation and may require the user to allow installs from MolidoVPN and confirm the system installer prompt. Silent installation is not attempted.
+- WireGuard's native engine and any future executable VPN cores are shipped inside the signed APK and update together with the app. Dynamic executable core downloads are intentionally disabled until an engine-specific signed bundle format, ABI compatibility checks, rollback, and sandbox review are implemented.
+- The updater requires a published GitHub Release with a numeric version-code tag (for example `v12`) and an `app-release.apk` asset whose API metadata exposes a SHA-256 digest.
+
 ## Privacy
 - Current IP and approximate geolocation data flow: [privacy data flows](docs/privacy-data-flows.md).
 
