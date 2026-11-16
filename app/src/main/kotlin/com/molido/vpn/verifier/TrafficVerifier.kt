@@ -36,7 +36,7 @@ class NetworkTrafficVerifier(
                 useCaches = false
             }
             require(connection.responseCode == HttpsURLConnection.HTTP_OK) {
-                "PUBLIC_EGRESS_HTTP_\${connection.responseCode}"
+                "PUBLIC_EGRESS_HTTP_" + connection.responseCode
             }
             val ip = connection.inputStream.bufferedReader(Charsets.US_ASCII).use { it.readText().trim() }
             require(isIpLiteral(ip)) { "PUBLIC_EGRESS_INVALID_IP_RESPONSE" }
