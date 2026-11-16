@@ -85,6 +85,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -131,12 +132,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MolidoVpnTheme(content: @Composable () -> Unit) {
     val darkColors = darkColorScheme(
-        primary = Color(0xFF38BDF8),
-        onPrimary = Color(0xFF0F172A),
-        surface = Color(0xFF1E293B),
-        onSurface = Color(0xFFF8FAFC),
-        background = Color(0xFF0F172A),
-        onBackground = Color(0xFFF1F5F9),
+        primary = Color(0xFF35D6CD),
+        onPrimary = Color(0xFF061418),
+        secondary = Color(0xFF20B8B2),
+        onSecondary = Color(0xFF041214),
+        surface = Color(0xFF10242D),
+        onSurface = Color(0xFFE8F7F8),
+        background = Color(0xFF07131A),
+        onBackground = Color(0xFFE8F7F8),
         error = Color(0xFFEF4444)
     )
 
