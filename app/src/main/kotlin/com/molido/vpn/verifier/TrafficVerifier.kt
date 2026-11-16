@@ -1,5 +1,8 @@
 package com.molido.vpn.verifier
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -24,13 +27,21 @@ interface TrafficVerifier {
  * client's public IP. The caller must invoke this only after tunnel startup.
  */
 class NetworkTrafficVerifier(
+    private val context: Context,
     private val endpoint: String = "https://api.ipify.org"
 ) : TrafficVerifier {
     override suspend fun verify(timeoutMillis: Long): VerificationResult = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         var connection: HttpsURLConnection? = null
         try {
-            connection = (URL(endpoint).openConnection() as? HttpsURLConnection)
+            val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = connectivity.activeNetwork
+                ?: return@withContext VerificationResult(false, errorMessage = "NO_ACTIVE_NETWORK")
+            val capabilities = connectivity.getNetworkCapabilities(activeNetwork)
+            if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) != true) {
+                return@withContext VerificationResult(false, errorMessage = "VPN_NETWORK_NOT_ACTIVE")
+            }
+            connection = (activeNetwork.openConnection(URL(endpoint)) as? HttpsURLConnection)
                 ?: return@withContext VerificationResult(false, errorMessage = "HTTPS_REQUIRED")
             connection.connectTimeout = timeoutMillis.toInt().coerceAtLeast(1)
             connection.readTimeout = timeoutMillis.toInt().coerceAtLeast(1)
