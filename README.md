@@ -1,4 +1,4 @@
-# MolidoVPN AI
+# MolidoVPN
 
 Independent Android VPN client focused on reliable, privacy-preserving multi-engine connectivity.
 

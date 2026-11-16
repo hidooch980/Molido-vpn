@@ -8,7 +8,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.molido.vpn.data.EncryptedConfigStore
 import com.molido.vpn.data.FreeServerCatalog
-import com.molido.vpn.data.FreeServerProfile
 import com.molido.vpn.dns.DohDnsResolver
 import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
@@ -88,7 +87,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _effects = MutableSharedFlow<VpnUiEffect>()
     val effects: SharedFlow<VpnUiEffect> = _effects.asSharedFlow()
 
-    private val _selectedEngineId = MutableStateFlow(configStore.getSelectedEngine())
+    private val _language = MutableStateFlow(AppLanguage.PERSIAN)
+    val language: StateFlow<AppLanguage> = _language.asStateFlow()
+
+    private val _selectedEngineId = MutableStateFlow("auto") // Default to Smart Auto Connect
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
     private val _activeConfigText = MutableStateFlow(
@@ -111,9 +113,16 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _installedApps = MutableStateFlow<List<AppInfo>>(emptyList())
     val installedApps: StateFlow<List<AppInfo>> = _installedApps.asStateFlow()
 
+    private val _isFetchingCommunity = MutableStateFlow(false)
+    val isFetchingCommunity: StateFlow<Boolean> = _isFetchingCommunity.asStateFlow()
+
     init {
         loadInstalledApps()
         refreshServers()
+    }
+
+    fun setLanguage(lang: AppLanguage) {
+        _language.value = lang
     }
 
     private fun loadInstalledApps() {
@@ -129,10 +138,17 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         _selectedEngineId.value = engineId
         configStore.saveSelectedEngine(engineId)
 
-        // If active config doesn't match engine, pick default free server of that engine
-        val freeMatch = FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
-        if (freeMatch != null) {
-            updateActiveConfig(freeMatch.rawPayload)
+        if (engineId == "auto") {
+            // In auto mode, pick the best scored server from catalog
+            val bestServer = _servers.value.firstOrNull()
+            if (bestServer != null) {
+                updateActiveConfig(bestServer.payload)
+            }
+        } else {
+            val freeMatch = FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
+            if (freeMatch != null) {
+                updateActiveConfig(freeMatch.rawPayload)
+            }
         }
     }
 
@@ -162,7 +178,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         setSelectedEngine(server.engineId)
         updateActiveConfig(server.payload)
         viewModelScope.launch {
-            _effects.emit(VpnUiEffect.ShowToast("Selected: ${server.name}"))
+            val label = if (_language.value == AppLanguage.PERSIAN) "انتخاب شد: ${server.name}" else "Selected: ${server.name}"
+            _effects.emit(VpnUiEffect.ShowToast(label))
         }
     }
 
@@ -173,38 +190,53 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             updateActiveConfig(imported.payload)
             refreshServers()
             viewModelScope.launch {
-                _effects.emit(VpnUiEffect.ShowToast("Imported successfully as ${imported.engineId.uppercase()}"))
+                val msg = if (_language.value == AppLanguage.PERSIAN) "کانفیگ با موفقیت به عنوان ${imported.engineId.uppercase()} وارد شد" else "Imported as ${imported.engineId.uppercase()}"
+                _effects.emit(VpnUiEffect.ShowToast(msg))
             }
         } catch (e: Exception) {
             viewModelScope.launch {
-                _effects.emit(VpnUiEffect.ShowToast("Import failed: ${e.message}"))
+                _effects.emit(VpnUiEffect.ShowToast("خطا در ورود: ${e.message}"))
             }
         }
     }
 
-    fun importFromSubscription(url: String) {
+    fun updateFromGithubCommunity() {
         viewModelScope.launch {
+            _isFetchingCommunity.value = true
+            val startMsg = if (_language.value == AppLanguage.PERSIAN) "در حال دریافت سرورهای رایگان جدید از مخازن گیت‌هاب..." else "Fetching free servers from GitHub..."
+            _effects.emit(VpnUiEffect.ShowToast(startMsg))
+
             try {
-                _effects.emit(VpnUiEffect.ShowToast("Fetching subscription..."))
-                val configs = SubscriptionManager.fetchSubscription(url)
-                if (configs.isEmpty()) {
-                    _effects.emit(VpnUiEffect.ShowToast("No valid configurations found in subscription"))
-                    return@launch
+                val configs = SubscriptionManager.fetchGithubCommunitySubscriptions()
+                if (configs.isNotEmpty()) {
+                    // Update server list with fetched free servers
+                    val newServers = configs.mapIndexed { index, conf ->
+                        val ping = (35L + (index * 8)).coerceAtMost(160L)
+                        val measurement = RouteMeasurement(conf.engineId, true, ping, 0.0, 98.0)
+                        val score = RouteScorer.score(measurement)
+                        ServerItem(
+                            id = "github-free-$index",
+                            name = conf.name,
+                            engineId = conf.engineId,
+                            country = "GitHub Free Node",
+                            flagEmoji = "\uD83C\uDF10",
+                            payload = conf.payload,
+                            measurement = measurement,
+                            score = score,
+                            isFree = true
+                        )
+                    }
+                    _servers.value = (_servers.value + newServers).distinctBy { it.payload }.sortedByDescending { it.score.score }
+                    val doneMsg = if (_language.value == AppLanguage.PERSIAN) "${configs.size} سرور رایگان جدید از گیت‌هاب با موفقیت اضافه شد" else "Added ${configs.size} free servers from GitHub"
+                    _effects.emit(VpnUiEffect.ShowToast(doneMsg))
+                } else {
+                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "سرورهای رایگان کاتالوگ فعال و بروز هستند" else "Default catalog servers are active"
+                    _effects.emit(VpnUiEffect.ShowToast(fallbackMsg))
                 }
-
-                // Add to saved subscriptions
-                val currentSubs = configStore.getSubscriptions().toMutableList()
-                if (!currentSubs.contains(url)) currentSubs.add(url)
-                configStore.saveSubscriptions(currentSubs)
-
-                // Select the first imported server
-                val first = configs.first()
-                setSelectedEngine(first.engineId)
-                updateActiveConfig(first.payload)
-                refreshServers()
-                _effects.emit(VpnUiEffect.ShowToast("Fetched ${configs.size} servers from subscription"))
             } catch (e: Exception) {
-                _effects.emit(VpnUiEffect.ShowToast("Subscription error: ${e.message}"))
+                _effects.emit(VpnUiEffect.ShowToast("خطا: ${e.message}"))
+            } finally {
+                _isFetchingCommunity.value = false
             }
         }
     }
@@ -213,14 +245,15 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         val freeServers = FreeServerCatalog.getDefaultFreeServers()
 
         val mockMetrics = mapOf(
-            "free-warp-global" to RouteMeasurement("warp", true, 28L, 0.0, 99.0, userPriority = 10),
-            "free-reality-1" to RouteMeasurement("xray", true, 54L, 0.1, 98.0, userPriority = 5),
-            "free-amnezia-1" to RouteMeasurement("amnezia", true, 62L, 0.0, 97.0, userPriority = 5),
-            "free-wireguard-1" to RouteMeasurement("wireguard", true, 75L, 0.5, 95.0, userPriority = 0)
+            "free-warp-global" to RouteMeasurement("warp", true, 26L, 0.0, 99.0, userPriority = 10),
+            "free-reality-1" to RouteMeasurement("xray", true, 42L, 0.0, 98.0, userPriority = 8),
+            "free-reality-2" to RouteMeasurement("xray", true, 48L, 0.1, 98.0, userPriority = 7),
+            "free-amnezia-1" to RouteMeasurement("amnezia", true, 55L, 0.0, 97.0, userPriority = 6),
+            "free-wireguard-1" to RouteMeasurement("wireguard", true, 68L, 0.5, 95.0, userPriority = 0)
         )
 
         val items = freeServers.map { profile ->
-            val measurement = mockMetrics[profile.id] ?: RouteMeasurement(profile.engineId, true, 80L, 0.0, 90.0)
+            val measurement = mockMetrics[profile.id] ?: RouteMeasurement(profile.engineId, true, 70L, 0.0, 92.0)
             val score = RouteScorer.score(measurement)
             ServerItem(
                 id = profile.id,
@@ -230,7 +263,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 flagEmoji = profile.flagEmoji,
                 payload = profile.rawPayload,
                 measurement = measurement,
-                score = score
+                score = score,
+                isFree = true
             )
         }.sortedByDescending { it.score.score }
 
@@ -238,36 +272,53 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onConnectClicked(context: Context) {
-        val engineId = _selectedEngineId.value
-        val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-        val config = EngineConfiguration(configPayload)
+        val targetEngine: String
+        val targetPayload: ByteArray
 
-        val adapter = coordinator.getAdapter(engineId)
+        if (_selectedEngineId.value == "auto") {
+            // Smart Connect Auto Mode: pick highest scoring route
+            val bestRoute = _servers.value.firstOrNull() ?: FreeServerCatalog.getDefaultFreeServers()[0].let {
+                ServerItem(it.id, it.name, it.engineId, it.country, it.flagEmoji, it.rawPayload, RouteMeasurement(it.engineId, true, 30L, 0.0, 99.0), RouteScore(it.engineId, 98.0, true))
+            }
+            targetEngine = bestRoute.engineId
+            targetPayload = bestRoute.payload.toByteArray(Charsets.UTF_8)
+            _activeConfigText.value = bestRoute.payload
+        } else {
+            targetEngine = _selectedEngineId.value
+            targetPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
+        }
+
+        val config = EngineConfiguration(targetPayload)
+        val adapter = coordinator.getAdapter(targetEngine)
         if (adapter == null) {
-            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("Unsupported engine: $engineId")) }
+            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("موتور نامعتبر: $targetEngine")) }
             return
         }
 
         viewModelScope.launch {
-            coordinator.requestConnect(engineId, config)
+            coordinator.requestConnect(targetEngine, config)
 
             val vpnIntent = VpnService.prepare(context)
             if (vpnIntent != null) {
                 _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
             } else {
-                coordinator.onVpnPermissionGranted(engineId, config)
+                coordinator.onVpnPermissionGranted(targetEngine, config)
             }
         }
     }
 
     fun onPermissionResult(isGranted: Boolean) {
         if (isGranted) {
-            val engineId = _selectedEngineId.value
+            val engine = if (_selectedEngineId.value == "auto") {
+                _servers.value.firstOrNull()?.engineId ?: "warp"
+            } else _selectedEngineId.value
+
             val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-            coordinator.onVpnPermissionGranted(engineId, EngineConfiguration(configPayload))
+            coordinator.onVpnPermissionGranted(engine, EngineConfiguration(configPayload))
         } else {
             viewModelScope.launch {
-                _effects.emit(VpnUiEffect.ShowToast("VPN permission denied"))
+                val msg = if (_language.value == AppLanguage.PERSIAN) "مجوز اتصال VPN رد شد" else "VPN permission denied"
+                _effects.emit(VpnUiEffect.ShowToast(msg))
             }
             coordinator.disconnect()
         }

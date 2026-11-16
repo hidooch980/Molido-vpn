@@ -112,7 +112,7 @@ class MolidoVpnService : VpnService() {
 
     private fun establishTunInterface(engineId: String, configText: String): ParcelFileDescriptor? {
         val builder = Builder()
-            .setSession("MolidoVPN AI ($engineId)")
+            .setSession("MolidoVPN ($engineId)")
 
         // Apply Kill Switch if enabled
         if (configStore.isKillSwitchEnabled()) {
@@ -253,7 +253,7 @@ class MolidoVpnService : VpnService() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MolidoVPN AI")
+            .setContentTitle("MolidoVPN")
             .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingLaunch)

@@ -1,0 +1,131 @@
+package com.molido.vpn.ui
+
+enum class AppLanguage(val code: String, val displayName: String) {
+    PERSIAN("fa", "فارسی"),
+    ENGLISH("en", "English")
+}
+
+data class AppStrings(
+    val appName: String,
+    val appSubtitle: String,
+    val tabConnect: String,
+    val tabServers: String,
+    val tabSecurity: String,
+    val autoConnect: String,
+    val autoConnectDesc: String,
+    val connectAction: String,
+    val disconnectAction: String,
+    val connecting: String,
+    val verifying: String,
+    val connectedVerified: String,
+    val disconnected: String,
+    val failedPrefix: String,
+    val diagnosticsTitle: String,
+    val latencyLabel: String,
+    val downloadLabel: String,
+    val uploadLabel: String,
+    val egressVerified: String,
+    val egressPending: String,
+    val freeServersTitle: String,
+    val clipboardButton: String,
+    val subscriptionButton: String,
+    val updateFromGithub: String,
+    val updatingGithub: String,
+    val killSwitchTitle: String,
+    val killSwitchDesc: String,
+    val alwaysOnButton: String,
+    val dohTitle: String,
+    val dohDesc: String,
+    val splitTunnelTitle: String,
+    val splitTunnelDesc: String,
+    val activeConfigTitle: String,
+    val languageLabel: String,
+    val scoreLabel: String,
+    val enginesTitle: String
+)
+
+object Localization {
+
+    val FA = AppStrings(
+        appName = "MolidoVPN",
+        appSubtitle = "فیلترشکن چندموتوره و ضدسانسور",
+        tabConnect = "اتصال",
+        tabServers = "سرورها",
+        tabSecurity = "امنیت",
+        autoConnect = "اتصال هوشمند (اتوماتیک)",
+        autoConnectDesc = "انتخاب خودکار سریع‌ترین و پایدارترین مسیر رایگان",
+        connectAction = "اتصال",
+        disconnectAction = "قطع اتصال",
+        connecting = "در حال برقراری ارتباط...",
+        verifying = "در حال راستی‌آزمایی ترافیک خروجی...",
+        connectedVerified = "متصل (ترافیک تایید شده)",
+        disconnected = "قطع اتصال (امن)",
+        failedPrefix = "خطا در اتصال: ",
+        diagnosticsTitle = "وضعیت و مانیتورینگ زنده",
+        latencyLabel = "تاخیر / پینگ",
+        downloadLabel = "دریافت",
+        uploadLabel = "ارسال",
+        egressVerified = "تایید شده",
+        egressPending = "در انتظار",
+        freeServersTitle = "سرورهای رایگان و سابسکرپشن‌ها",
+        clipboardButton = "کلیپ‌بورد",
+        subscriptionButton = "لینک سابسکرپشن",
+        updateFromGithub = "بروزرسانی از گیت‌هاب",
+        updatingGithub = "در حال دریافت سرورهای رایگان از گیت‌هاب...",
+        killSwitchTitle = "کلید قطع اضطراری (Kill Switch)",
+        killSwitchDesc = "مسدودسازی تمام ترافیک در صورت قطع شدن فیلترشکن جهت جلوگیری از نشت داده",
+        alwaysOnButton = "تنظیمات VPN همیشه‌روشن در اندروید",
+        dohTitle = "دی‌ان‌اس ضد تحریف (DoH)",
+        dohDesc = "مقابله با مسمومیت و مسدودسازی مبتنی بر DNS",
+        splitTunnelTitle = "تفکیک برنامه‌ها (Split Tunneling)",
+        splitTunnelDesc = "عبور برنامه‌های انتخابی (مانند اپ‌های بانکی) از اینترنت مستقیم",
+        activeConfigTitle = "پروفایل و کانفیگ فعال",
+        languageLabel = "زبان برنامه",
+        scoreLabel = "امتیاز",
+        enginesTitle = "پروتکل‌ها و موتورهای فعال"
+    )
+
+    val EN = AppStrings(
+        appName = "MolidoVPN",
+        appSubtitle = "Multi-Engine • Anti-Censorship Core",
+        tabConnect = "Connect",
+        tabServers = "Servers",
+        tabSecurity = "Security",
+        autoConnect = "Smart Connect (Auto)",
+        autoConnectDesc = "Automatically chooses the fastest and most stable free route",
+        connectAction = "Connect",
+        disconnectAction = "Disconnect",
+        connecting = "Connecting...",
+        verifying = "Verifying Egress Traffic...",
+        connectedVerified = "Connected (Traffic Verified)",
+        disconnected = "Disconnected (Fail-closed)",
+        failedPrefix = "Connection Failed: ",
+        diagnosticsTitle = "Live Diagnostics",
+        latencyLabel = "Latency",
+        downloadLabel = "Download",
+        uploadLabel = "Upload",
+        egressVerified = "Verified",
+        egressPending = "Pending",
+        freeServersTitle = "Free & Curated Community Servers",
+        clipboardButton = "Clipboard",
+        subscriptionButton = "Subscription",
+        updateFromGithub = "Update from GitHub",
+        updatingGithub = "Fetching fresh free servers from GitHub...",
+        killSwitchTitle = "Kill Switch (Leak Shield)",
+        killSwitchDesc = "Blocks all non-VPN traffic when tunnel drops to prevent leaks",
+        alwaysOnButton = "Configure Always-on VPN in Android Settings",
+        dohTitle = "Secure DNS-over-HTTPS (DoH)",
+        dohDesc = "Prevents DNS spoofing and poison attacks",
+        splitTunnelTitle = "Split Tunneling",
+        splitTunnelDesc = "Bypass banking or local apps from VPN tunnel",
+        activeConfigTitle = "Active Configuration Profile",
+        languageLabel = "App Language",
+        scoreLabel = "Score",
+        enginesTitle = "Supported Engines"
+    )
+
+    fun get(lang: AppLanguage): AppStrings = when (lang) {
+        AppLanguage.PERSIAN -> FA
+        AppLanguage.ENGLISH -> EN
+    }
+}

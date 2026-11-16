@@ -91,4 +91,18 @@ object SubscriptionManager {
         }
         results
     }
+
+    suspend fun fetchGithubCommunitySubscriptions(): List<ImportedConfig> = withContext(Dispatchers.IO) {
+        val allConfigs = mutableListOf<ImportedConfig>()
+        for (url in com.molido.vpn.data.FreeServerCatalog.GITHUB_COMMUNITY_SUBSCRIPTIONS) {
+            try {
+                val fetched = fetchSubscription(url)
+                allConfigs.addAll(fetched)
+                if (allConfigs.size >= 25) break // Cap at a balanced pool
+            } catch (_: Exception) {
+                // Continue to next mirror if one repo is blocked or rate-limited
+            }
+        }
+        allConfigs
+    }
 }

@@ -1,4 +1,4 @@
-# MolidoVPN AI — architecture
+# MolidoVPN — architecture
 
 ## Runtime boundaries
 

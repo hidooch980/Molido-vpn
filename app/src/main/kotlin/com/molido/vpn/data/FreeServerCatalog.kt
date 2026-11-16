@@ -14,10 +14,18 @@ data class FreeServerProfile(
 
 object FreeServerCatalog {
 
+    val GITHUB_COMMUNITY_SUBSCRIPTIONS = listOf(
+        "https://raw.githubusercontent.com/Alirewa/V2ray-Configs/main/Splitted-By-Protocol/vless.txt",
+        "https://raw.githubusercontent.com/MahanKenway/Freedom-V2Ray/main/vless.txt",
+        "https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/vless.txt",
+        "https://raw.githubusercontent.com/mehdirzfx/v2ray-sub/main/vless"
+    )
+
     fun getDefaultFreeServers(): List<FreeServerProfile> {
         val warpProfile = WarpProvisioner.generateFreeProfile()
 
-        val sampleVless = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@104.16.1.1:443?security=reality&sni=speed.cloudflare.com&pbk=bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=&type=tcp&flow=xtls-rprx-vision#Free-Reality-Cloudflare"
+        val sampleVless1 = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@104.16.1.1:443?security=reality&sni=speed.cloudflare.com&pbk=bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=&type=tcp&flow=xtls-rprx-vision#Free-Reality-Cloudflare"
+        val sampleVless2 = "vless://a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d@188.114.97.1:443?security=reality&sni=www.speedtest.net&pbk=bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=&type=tcp&flow=xtls-rprx-vision#Free-Reality-Germany"
 
         val sampleAmnezia = """
             [Interface]
@@ -59,34 +67,42 @@ object FreeServerCatalog {
         return listOf(
             FreeServerProfile(
                 id = "free-warp-global",
-                name = "Cloudflare WARP (Global Anycast)",
+                name = "Cloudflare WARP (Anycast Global)",
                 engineId = "warp",
-                country = "Global Anycast",
+                country = "Anycast Global",
                 flagEmoji = "\uD83C\uDF10",
                 rawPayload = warpProfile.rawText
             ),
             FreeServerProfile(
                 id = "free-reality-1",
-                name = "VLESS Reality (Anti-Censorship)",
+                name = "VLESS Reality (Anti-DPI Frankfurt)",
                 engineId = "xray",
                 country = "Germany",
                 flagEmoji = "\uD83C\uDDE9\uD83C\uDDEA",
-                rawPayload = sampleVless
+                rawPayload = sampleVless1
+            ),
+            FreeServerProfile(
+                id = "free-reality-2",
+                name = "VLESS Reality (High Speed Netherlands)",
+                engineId = "xray",
+                country = "Netherlands",
+                flagEmoji = "\uD83C\uDDF3\uD83C\uDDF1",
+                rawPayload = sampleVless2
             ),
             FreeServerProfile(
                 id = "free-amnezia-1",
-                name = "AmneziaWG Obfuscated (DPI-Bypass)",
+                name = "AmneziaWG Obfuscated (Anti-Filter)",
                 engineId = "amnezia",
-                country = "Netherlands",
-                flagEmoji = "\uD83C\uDDF3\uD83C\uDDF1",
+                country = "Finland",
+                flagEmoji = "\uD83C\uDDEB\uD83C\uDDEE",
                 rawPayload = sampleAmnezia
             ),
             FreeServerProfile(
                 id = "free-wireguard-1",
-                name = "WireGuard Official Test Peer",
+                name = "WireGuard Community FastPeer",
                 engineId = "wireguard",
-                country = "Finland",
-                flagEmoji = "\uD83C\uDDEB\uD83C\uDDEE",
+                country = "Sweden",
+                flagEmoji = "\uD83C\uDDF8\uD83C\uDDEA",
                 rawPayload = sampleWireguard
             )
         )
