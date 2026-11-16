@@ -32,7 +32,8 @@ class ConnectionCoordinatorTest {
         val coordinator = ConnectionCoordinator(
             scope = this,
             trafficVerifier = mockVerifier,
-            adapters = mapOf(adapter.id to adapter)
+            adapters = mapOf(adapter.id to adapter),
+            isEngineProductionReady = { true } // Unit-test state transitions only.
         )
 
         val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
