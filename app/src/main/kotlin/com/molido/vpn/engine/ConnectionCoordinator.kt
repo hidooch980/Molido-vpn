@@ -2,7 +2,6 @@ package com.molido.vpn.engine
 
 import com.molido.vpn.verifier.TrafficVerifier
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,8 +84,8 @@ class ConnectionCoordinator(
                     )
                     currentSession = session
                 } catch (e: Exception) {
+                    cleanupSession()
                     dispatch(ConnectionEvent.Fail("Engine connection failed: ${e.message}"))
-                    onVpnInterfaceTornDown()
                 }
             }
         }
@@ -106,11 +105,11 @@ class ConnectionCoordinator(
                     )
                 }
                 is EngineEvent.Failed -> {
+                    cleanupSession()
                     if (event.recoverable) {
                         dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
                     } else {
                         dispatch(ConnectionEvent.Fail(event.reasonCode))
-                        disconnect()
                     }
                 }
             }
@@ -129,26 +128,30 @@ class ConnectionCoordinator(
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
             val reason = verification.errorMessage ?: "Egress traffic verification failed"
+            cleanupSession()
             dispatch(ConnectionEvent.Fail(reason))
-            disconnect()
         }
+    }
+
+    private fun cleanupSession() {
+        currentSession?.let { session ->
+            adapters[session.engineId]?.let { adapter ->
+                scope.launch { adapter.disconnect(session) }
+            }
+            currentSession = null
+        }
+        scope.launch {
+            try {
+                onVpnInterfaceTornDown()
+            } catch (_: Exception) {}
+        }
+        _diagnostics.value = _diagnostics.value.copy(activeEngineId = null)
     }
 
     fun disconnect() {
         connectJob?.cancel()
-        scope.launch {
-            mutex.withLock {
-                currentSession?.let { session ->
-                    adapters[session.engineId]?.disconnect(session)
-                    currentSession = null
-                }
-                try {
-                    onVpnInterfaceTornDown()
-                } catch (_: Exception) {}
-                dispatch(ConnectionEvent.Stop)
-                _diagnostics.value = _diagnostics.value.copy(activeEngineId = null)
-            }
-        }
+        cleanupSession()
+        dispatch(ConnectionEvent.Stop)
     }
 
     private fun dispatch(event: ConnectionEvent) {

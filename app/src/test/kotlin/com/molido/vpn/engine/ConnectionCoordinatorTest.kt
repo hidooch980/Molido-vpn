@@ -3,8 +3,6 @@ package com.molido.vpn.engine
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.verifier.MockTrafficVerifier
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -13,9 +11,6 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionCoordinatorTest {
-
-    private val testDispatcher = StandardTestDispatcher()
-    private val testScope = TestScope(testDispatcher)
 
     private val validConfig = """
         [Interface]
@@ -31,7 +26,7 @@ class ConnectionCoordinatorTest {
     """.trimIndent()
 
     @Test
-    fun successfulConnectionMovesThroughFullVerificationToConnected() = testScope.runTest {
+    fun successfulConnectionMovesThroughFullVerificationToConnected() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = true, simulatedLatency = 35L)
         val adapter = WireGuardEngineAdapter()
         val coordinator = ConnectionCoordinator(
@@ -61,7 +56,7 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
-    fun failedVerificationFailsClosed() = testScope.runTest {
+    fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
         val adapter = WireGuardEngineAdapter()
         val coordinator = ConnectionCoordinator(
