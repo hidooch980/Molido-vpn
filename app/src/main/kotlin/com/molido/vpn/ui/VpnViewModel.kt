@@ -62,7 +62,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
-        trafficVerifier = NetworkTrafficVerifier(),
+        trafficVerifier = NetworkTrafficVerifier(application),
         adapters = mapOf(
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
