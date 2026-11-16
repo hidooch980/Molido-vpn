@@ -678,16 +678,17 @@ fun ServersTab(
         }
 
         items(servers) { server ->
+            val latency = server.measurement.latencyMillis
             val latencyColor = when {
-                !server.measurement.reachable -> Color(0xFFEF4444)
-                server.measurement.latencyMillis < 80 -> Color(0xFF10B981)
-                server.measurement.latencyMillis < 180 -> Color(0xFFF59E0B)
+                !server.measurement.reachable || latency == null -> Color(0xFFEF4444)
+                latency < 80 -> Color(0xFF10B981)
+                latency < 180 -> Color(0xFFF59E0B)
                 else -> Color(0xFFF97316)
             }
-            val latencyText = if (!server.measurement.reachable) {
+            val latencyText = if (!server.measurement.reachable || latency == null) {
                 "قطع / Timeout"
             } else {
-                "${server.measurement.latencyMillis} ms"
+                "$latency ms"
             }
 
             Card(

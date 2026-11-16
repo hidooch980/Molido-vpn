@@ -86,11 +86,11 @@ object BatchPingTester {
                 }
                 "amnezia" -> {
                     val config = AmneziaWgConfigParser.parse(rawPayload)
-                    Pair(config.endpointHost, config.endpointPort)
+                    Pair(config.peerConfig.endpointHost, config.peerConfig.endpointPort)
                 }
                 "wireguard" -> {
                     val config = WireGuardConfigParser.parse(rawPayload)
-                    Pair(config.endpointHost, config.endpointPort)
+                    Pair(config.peerConfig.endpointHost, config.peerConfig.endpointPort)
                 }
                 else -> Pair("1.1.1.1", 443)
             }

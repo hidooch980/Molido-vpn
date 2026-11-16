@@ -58,14 +58,14 @@ class Hysteria2EngineAdapter : EngineAdapter {
 
         fun updateStats(bytesIn: Long, bytesOut: Long) {
             if (active.get()) {
-                onEvent(EngineEvent.TrafficSample(bytesIn, bytesOut))
+                onEvent(EngineEvent.Statistics(bytesIn, bytesOut))
             }
         }
 
         fun terminate() {
-            if (active.compareAndSet(true, false)) {
-                onEvent(EngineEvent.SessionTerminated("Hysteria 2 session closed cleanly"))
-            }
+            active.set(false)
         }
+
+        val isActive: Boolean get() = active.get()
     }
 }
