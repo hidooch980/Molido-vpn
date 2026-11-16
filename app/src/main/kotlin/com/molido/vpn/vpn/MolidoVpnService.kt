@@ -13,6 +13,8 @@ import androidx.core.app.NotificationCompat
 import com.molido.vpn.MainActivity
 import com.molido.vpn.data.EncryptedConfigStore
 import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.engine.EngineReadiness
+import com.molido.vpn.engine.EngineRuntimeCatalog
 import com.molido.vpn.engine.amnezia.AmneziaWgConfigParser
 import com.molido.vpn.engine.wireguard.WireGuardConfigParser
 import com.molido.vpn.network.NetworkHandoverMonitor
@@ -77,131 +79,117 @@ class MolidoVpnService : VpnService() {
                 val configText = intent.getStringExtra(EXTRA_CONFIG_TEXT) ?: ""
                 handleConnect(engineId, configText)
             }
-            ACTION_DISCONNECT -> {
-                handleDisconnect()
-            }
+            ACTION_DISCONNECT -> handleDisconnect()
         }
         return START_NOT_STICKY
     }
 
     private fun handleConnect(engineId: String, configText: String) {
+        startForeground(NOTIFICATION_ID, buildNotification("Checking $engineId runtime..."))
+
+        val support = EngineRuntimeCatalog.find(engineId)
+        if (support == null ||
+            !support.selectable ||
+            support.readiness != EngineReadiness.PRODUCTION
+        ) {
+            // Never establish an empty/default TUN or report Connected for a
+            // parser-only adapter. Real packet forwarding must be integrated
+            // and release-gated before an engine can be enabled in the catalog.
+            isServiceRunning = false
+            activeEngine = null
+            closeVpnInterface()
+            updateNotification("Unavailable: $engineId engine is not production-verified")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
         try {
-            startForeground(NOTIFICATION_ID, buildNotification("Connecting to $engineId..."))
-
             val pfd = establishTunInterface(engineId, configText)
-            if (pfd != null) {
-                vpnInterface?.close()
-                vpnInterface = pfd
-                isServiceRunning = true
-                activeEngine = engineId
-                updateNotification("Connected via $engineId")
-
-                // Start Handover Monitor
-                handoverMonitor?.stop()
-                handoverMonitor = NetworkHandoverMonitor(this) { isWifi, isCellular ->
-                    val netType = if (isWifi) "Wi-Fi" else if (isCellular) "Cellular" else "Network"
-                    updateNotification("Connected via $engineId ($netType)")
-                }.also { it.start() }
-            } else {
+            if (pfd == null) {
                 handleDisconnect()
+                return
             }
+
+            vpnInterface?.close()
+            vpnInterface = pfd
+            isServiceRunning = true
+            activeEngine = engineId
+            updateNotification("Tunnel interface ready; verifying engine traffic")
+
+            handoverMonitor?.stop()
+            handoverMonitor = NetworkHandoverMonitor(this) { isWifi, isCellular ->
+                val netType = if (isWifi) "Wi-Fi" else if (isCellular) "Cellular" else "Network"
+                updateNotification("Engine traffic verification required ($netType)")
+            }.also { it.start() }
         } catch (_: Exception) {
             handleDisconnect()
         }
     }
 
     private fun establishTunInterface(engineId: String, configText: String): ParcelFileDescriptor? {
-        val builder = Builder()
-            .setSession("MolidoVPN AI ($engineId)")
+        val builder = Builder().setSession("MolidoVPN AI ($engineId)")
 
-        // Apply Kill Switch if enabled
         if (configStore.isKillSwitchEnabled()) {
             KillSwitchManager.applyToVpnBuilder(builder, true)
         }
 
-        // Apply Split Tunneling exclusions
         val splitApps = configStore.getSplitTunnelApps()
         if (splitApps.isNotEmpty()) {
             SplitTunnelManager.applyToVpnBuilder(builder, splitApps)
         }
 
-        // Apply Custom / DoH DNS
-        val selectedDns = configStore.getSelectedDns()
-        DohDnsResolver.applyToVpnBuilder(builder, selectedDns)
+        DohDnsResolver.applyToVpnBuilder(builder, configStore.getSelectedDns())
 
-        // Protocol-specific TUN interface setup
         when (engineId) {
-            "wireguard", "warp" -> {
-                try {
-                    val parsed = WireGuardConfigParser.parse(configText)
-                    builder.setMtu(parsed.interfaceConfig.mtu)
-
-                    for (addr in parsed.interfaceConfig.addresses) {
-                        val parts = addr.split('/')
-                        if (parts.size == 2) {
-                            val ip = parts[0]
-                            val prefix = parts[1].toIntOrNull() ?: 32
-                            builder.addAddress(ip, prefix)
-                        }
-                    }
-
-                    for (allowedIp in parsed.peerConfig.allowedIps) {
-                        val parts = allowedIp.split('/')
-                        if (parts.size == 2) {
-                            val ip = parts[0]
-                            val prefix = parts[1].toIntOrNull() ?: 0
-                            builder.addRoute(ip, prefix)
-                        }
-                    }
-                } catch (_: Exception) {
-                    applyDefaultTunParameters(builder)
+            "wireguard" -> {
+                val parsed = WireGuardConfigParser.parse(configText)
+                builder.setMtu(parsed.interfaceConfig.mtu)
+                parsed.interfaceConfig.addresses.forEach { address ->
+                    val parts = address.split('/')
+                    require(parts.size == 2) { "Invalid interface address" }
+                    builder.addAddress(parts[0], parts[1].toInt())
+                }
+                parsed.peerConfig.allowedIps.forEach { route ->
+                    val parts = route.split('/')
+                    require(parts.size == 2) { "Invalid peer route" }
+                    builder.addRoute(parts[0], parts[1].toInt())
                 }
             }
-            "amnezia" -> {
-                try {
-                    val parsed = AmneziaWgConfigParser.parse(configText)
-                    builder.setMtu(parsed.interfaceConfig.mtu)
-
-                    for (addr in parsed.interfaceConfig.addresses) {
-                        val parts = addr.split('/')
-                        if (parts.size == 2) {
-                            val ip = parts[0]
-                            val prefix = parts[1].toIntOrNull() ?: 32
-                            builder.addAddress(ip, prefix)
-                        }
-                    }
-                    builder.addRoute("0.0.0.0", 0)
-                } catch (_: Exception) {
-                    applyDefaultTunParameters(builder)
+            "amneziawg" -> {
+                val parsed = AmneziaWgConfigParser.parse(configText)
+                builder.setMtu(parsed.interfaceConfig.mtu)
+                parsed.interfaceConfig.addresses.forEach { address ->
+                    val parts = address.split('/')
+                    require(parts.size == 2) { "Invalid interface address" }
+                    builder.addAddress(parts[0], parts[1].toInt())
+                }
+                parsed.peerConfig.allowedIps.forEach { route ->
+                    val parts = route.split('/')
+                    require(parts.size == 2) { "Invalid peer route" }
+                    builder.addRoute(parts[0], parts[1].toInt())
                 }
             }
-            "xray" -> {
-                // Xray / VLESS tun mode route mapping
-                builder.setMtu(1500)
-                    .addAddress("172.19.0.1", 30)
-                    .addRoute("0.0.0.0", 0)
-            }
-            else -> {
-                applyDefaultTunParameters(builder)
-            }
+            // These engines need their own reviewed TUN/packet bridge setup.
+            // They must not inherit a generic default route.
+            else -> return null
         }
 
         return builder.establish()
     }
 
-    private fun applyDefaultTunParameters(builder: Builder) {
-        builder.setMtu(1420)
-            .addAddress("10.200.0.2", 32)
-            .addRoute("0.0.0.0", 0)
+    private fun closeVpnInterface() {
+        try {
+            vpnInterface?.close()
+        } catch (_: IOException) {
+        }
+        vpnInterface = null
     }
 
     private fun handleDisconnect() {
         handoverMonitor?.stop()
         handoverMonitor = null
-        try {
-            vpnInterface?.close()
-        } catch (_: IOException) {}
-        vpnInterface = null
+        closeVpnInterface()
         isServiceRunning = false
         activeEngine = null
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -228,17 +216,14 @@ class MolidoVpnService : VpnService() {
                 description = "Shows active VPN connection status"
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(statusText: String): Notification {
         val launchIntent = Intent(this, MainActivity::class.java)
         val pendingLaunch = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
+            this, 0, launchIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -246,9 +231,7 @@ class MolidoVpnService : VpnService() {
             action = ACTION_DISCONNECT
         }
         val pendingDisconnect = PendingIntent.getService(
-            this,
-            1,
-            disconnectIntent,
+            this, 1, disconnectIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
