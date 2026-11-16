@@ -35,23 +35,15 @@ class WireGuardEngineAdapter : EngineAdapter {
         protectSocket: (Int) -> Boolean,
         onEvent: (EngineEvent) -> Unit
     ): EngineSession {
-        val configText = String(configuration.opaquePayload, Charsets.UTF_8)
-        val parsedConfig = try {
-            WireGuardConfigParser.parse(configText)
-        } catch (e: Exception) {
-            onEvent(EngineEvent.Failed("Config error: ${e.message}", recoverable = false))
-            throw e
+        // Fail closed until the official WireGuard GoBackend is integrated as
+        // the sole TUN owner and real socket protection/packet forwarding exist.
+        val validation = validate(configuration)
+        if (validation is ValidationResult.Invalid) {
+            onEvent(EngineEvent.Failed(validation.reasonCode, recoverable = false))
+            throw IllegalArgumentException(validation.reasonCode)
         }
-
-        val session = WireGuardSession(
-            engineId = id,
-            config = parsedConfig,
-            onEvent = onEvent
-        )
-
-        // Signal that the engine transport has completed handshake and is ready for traffic verification
-        onEvent(EngineEvent.TransportReady)
-        return session
+        onEvent(EngineEvent.Failed("WIREGUARD_BACKEND_NOT_INTEGRATED", recoverable = false))
+        throw UnsupportedOperationException("WIREGUARD_BACKEND_NOT_INTEGRATED")
     }
 
     override suspend fun disconnect(session: EngineSession) {
