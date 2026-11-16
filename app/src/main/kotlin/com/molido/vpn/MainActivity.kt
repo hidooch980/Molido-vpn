@@ -243,6 +243,17 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "مرکز امکانات" else "Feature Center") },
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
+                        )
+                    )
                     Spacer(Modifier.height(12.dp))
                     Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
@@ -268,6 +279,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                                 when (selectedTab) {
                                     1 -> if (language == AppLanguage.PERSIAN) "سرورها" else "Servers"
                                     2 -> if (language == AppLanguage.PERSIAN) "امنیت" else "Security"
+                                    3 -> if (language == AppLanguage.PERSIAN) "مرکز امکانات" else "Feature Center"
                                     else -> "MolidoVPN AI"
                                 },
                                 fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color.White
@@ -313,6 +325,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                             else Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
                         }
                     )
+                    3 -> DashboardFeatureCenter(language = language)
                     2 -> SecuritySettingsTab(
                         strings = strings, currentLanguage = language,
                         onSelectLanguage = { viewModel.setLanguage(it) },
@@ -404,8 +417,8 @@ fun ConnectTab(
                 DashboardMetricCard(
                     modifier = Modifier.weight(1f),
                     title = if (strings.appName == "MolidoVPN") "IP خروجی" else "EXIT IP",
-                    value = "—",
-                    detail = if (isVerified) "در انتظار بررسی IP" else "پس از اتصال تأییدشده",
+                    value = diagnostics.egressIp ?: "—",
+                    detail = if (diagnostics.egressIp != null) "HTTPS egress verified" else if (isVerified) "IP هنوز تأیید نشده" else "پس از اتصال تأییدشده",
                     icon = Icons.Default.Security
                 )
                 DashboardMetricCard(
@@ -1037,5 +1050,64 @@ fun DiagnosticItem(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
         Spacer(modifier = Modifier.height(2.dp))
         Text(value, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+
+private data class DashboardFeature(
+    val number: String,
+    val titleFa: String,
+    val titleEn: String,
+    val descriptionFa: String,
+    val descriptionEn: String,
+    val statusFa: String,
+    val statusEn: String
+)
+
+@Composable
+private fun DashboardFeatureCenter(language: AppLanguage) {
+    val persian = language == AppLanguage.PERSIAN
+    val features = listOf(
+        DashboardFeature("01", "حلقه اتصال هوشمند", "Smart Connection Ring", "وضعیت اتصال فقط پس از تأیید ترافیک واقعی معتبر است.", "Connection is valid only after real traffic verification.", "رابط آماده؛ موتور WireGuard هنوز یکپارچه نشده.", "UI ready; WireGuard backend integration pending."),
+        DashboardFeature("02", "IP و موقعیت خروجی", "Exit IP & Location", "IP از پاسخ HTTPS خروجی گرفته می‌شود؛ مکان نیازمند منبع معتبر است.", "IP comes from HTTPS egress; geolocation needs a trusted provider.", "IP verifier در حال اتصال؛ مکان در انتظار.", "IP verifier integration in progress; location pending."),
+        DashboardFeature("03", "مانیتور زنده شبکه", "Live Network Monitor", "تأخیر و شمارنده ترافیک؛ packet loss و throughput نیازمند probe واقعی‌اند.", "Latency and traffic counters; packet loss and throughput need real probes.", "جزئی؛ اندازه‌گیری کامل باقی است.", "Partial; full measurement pending."),
+        DashboardFeature("04", "مرکز امنیت", "Security Center", "تنظیم DNS و Kill Switch موجود است؛ آزمون نشت DNS و IPv6 باقی است.", "DNS and Kill Switch settings exist; DNS and IPv6 leak tests remain.", "تنظیمات موجود؛ آزمون دستگاه لازم است.", "Settings exist; device tests required."),
+        DashboardFeature("05", "مسیریابی هوشمند", "AI Smart Routing", "انتخاب خودکار فقط از مسیرهای دارای اندازه‌گیری واقعی مجاز است.", "Automatic selection is limited to routes with real measurements.", "تا ثبت اندازه‌گیری واقعی غیرفعال.", "Disabled until real measurements exist."),
+        DashboardFeature("06", "مدیریت موتورهای VPN", "VPN Engine Manager", "کاتالوگ و Adapterها نیازمند GoBackend و ادغام موتورهای واقعی‌اند.", "Catalog and adapters need GoBackend and real engine integrations.", "در حال توسعه؛ هیچ موتور تأیید دستگاه نیست.", "In development; no engine is device-verified."),
+        DashboardFeature("07", "تاریخچه اتصال", "Connection History", "ثبت امن رخدادها، مدت اتصال و علت قطع؛ بدون ذخیره کلیدها.", "Secure event history, duration and disconnect causes; never store keys.", "در انتظار پیاده‌سازی.", "Implementation pending."),
+        DashboardFeature("08", "به‌روزرسانی هسته‌ها", "Core Updates", "بررسی امضا، نسخه، ABI، ضد rollback و بازیابی نسخه قبلی.", "Signature, version, ABI, anti-rollback and recovery checks.", "در انتظار پیاده‌سازی.", "Implementation pending."),
+        DashboardFeature("09", "دستیار AI عیب‌یابی", "AI Diagnostics", "تحلیل خطا و پیشنهاد اصلاح؛ اقدامات حساس با تأیید کاربر.", "Error analysis and remediation; sensitive actions require approval.", "در انتظار موتور تحلیل و داده واقعی.", "AI engine and real telemetry pending."),
+        DashboardFeature("10", "شخصی‌سازی", "Personalization", "زبان و تنظیمات پایه موجود است؛ تم و اعلان‌ها نیازمند تکمیل‌اند.", "Language and basic settings exist; themes and notifications need completion.", "جزئی؛ توسعه ادامه دارد.", "Partial; further work required.")
+    )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Column(Modifier.padding(top = 14.dp, bottom = 4.dp)) {
+                Text(if (persian) "مرکز کنترل MolidoVPN AI" else "MolidoVPN AI Feature Center", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(if (persian) "وضعیت واقعی هر ده قابلیت؛ موارد تأییدنشده فعال نمایش داده نمی‌شوند." else "Readiness for all ten features; unverified capabilities are never shown as active.", color = Color(0xFF86A5AA), fontSize = 12.sp)
+            }
+        }
+        items(features) { feature ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(feature.number, color = Color(0xFF35D6CD), fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(if (persian) feature.titleFa else feature.titleEn, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(if (persian) "در حال تکمیل" else "IN PROGRESS", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(if (persian) feature.descriptionFa else feature.descriptionEn, color = Color(0xFF9BB5B9), fontSize = 11.sp)
+                    Text(if (persian) feature.statusFa else feature.statusEn, color = Color(0xFF45CFC7), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+        item { Spacer(Modifier.height(20.dp)) }
     }
 }
