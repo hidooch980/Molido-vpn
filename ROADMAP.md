@@ -37,6 +37,15 @@
 - [ ] Adaptive selection based on measured latency, loss and stability.
 - [ ] Split tunneling, safe update mechanism, and multilingual UI.
 
+## Updates
+- [x] Check official GitHub Releases on app launch.
+- [x] Automatically download newer APKs and verify GitHub SHA-256 metadata.
+- [x] Verify package identity and signing certificate against the installed app before handing off to Android installer.
+- [x] Publish signed APKs as GitHub Release assets from the gated release workflow.
+- [x] Update bundled WireGuard core together with the signed app release.
+- [ ] Add periodic background checks and user-configurable update channels.
+- [ ] Add independently signed, rollback-safe core bundles only when an engine supports safe dynamic loading and ABI validation.
+
 ## Signing and release
 - [ ] Locate and securely verify the previously approved owner keystore.
 - [ ] Store signing material only in protected CI secrets or a secure local signing environment.
