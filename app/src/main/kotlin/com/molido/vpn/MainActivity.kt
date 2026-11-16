@@ -37,6 +37,10 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -58,6 +62,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -76,6 +85,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,6 +109,7 @@ import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
 import com.molido.vpn.ui.VpnViewModel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -121,12 +132,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MolidoVpnTheme(content: @Composable () -> Unit) {
     val darkColors = darkColorScheme(
-        primary = Color(0xFF38BDF8),
-        onPrimary = Color(0xFF0F172A),
-        surface = Color(0xFF1E293B),
-        onSurface = Color(0xFFF8FAFC),
-        background = Color(0xFF0F172A),
-        onBackground = Color(0xFFF1F5F9),
+        primary = Color(0xFF35D6CD),
+        onPrimary = Color(0xFF061418),
+        secondary = Color(0xFF20B8B2),
+        onSecondary = Color(0xFF041214),
+        surface = Color(0xFF10242D),
+        onSurface = Color(0xFFE8F7F8),
+        background = Color(0xFF07131A),
+        onBackground = Color(0xFFE8F7F8),
         error = Color(0xFFEF4444)
     )
 
@@ -138,10 +151,11 @@ fun MolidoVpnTheme(content: @Composable () -> Unit) {
 fun MainAppScreen(viewModel: VpnViewModel) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     val language by viewModel.language.collectAsState()
     val strings = Localization.get(language)
-
     val connectionState by viewModel.connectionState.collectAsState()
     val diagnostics by viewModel.diagnostics.collectAsState()
     val selectedEngineId by viewModel.selectedEngineId.collectAsState()
@@ -158,9 +172,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        viewModel.onPermissionResult(result.resultCode == Activity.RESULT_OK)
-    }
+    ) { result -> viewModel.onPermissionResult(result.resultCode == Activity.RESULT_OK) }
 
     LaunchedEffect(Unit) {
         viewModel.effects.collectLatest { effect ->
@@ -171,118 +183,174 @@ fun MainAppScreen(viewModel: VpnViewModel) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(strings.appName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(
-                            strings.appSubtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = true,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = Color(0xFF07131A),
+                drawerContentColor = Color(0xFFE8F7F8)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp))
+                                .background(Color(0xFF073B42)).border(1.dp, Color(0xFF20D6D2), RoundedCornerShape(15.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.VpnLock, contentDescription = null, tint = Color(0xFF36E0D5), modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("MOLIDO", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, letterSpacing = 2.sp)
+                            Text("VPN  •  AI SECURITY", color = Color(0xFF48CFC8), fontSize = 10.sp, letterSpacing = 1.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(if (language == AppLanguage.PERSIAN) "منوی اصلی" else "MAIN MENU", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "داشبورد" else "Dashboard", fontWeight = FontWeight.SemiBold) },
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40),
+                            selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White,
+                            unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
                         )
-                    }
-                },
-                actions = {
-                    // Quick language toggle
-                    IconButton(onClick = {
-                        val nextLang = if (language == AppLanguage.PERSIAN) AppLanguage.ENGLISH else AppLanguage.PERSIAN
-                        viewModel.setLanguage(nextLang)
-                    }) {
-                        Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF38BDF8))
-                    }
-                    IconButton(onClick = { viewModel.refreshServers() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.VpnLock, contentDescription = strings.tabConnect) },
-                    label = { Text(strings.tabConnect) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Storage, contentDescription = strings.tabServers) },
-                    label = { Text(strings.tabServers) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Security, contentDescription = strings.tabSecurity) },
-                    label = { Text(strings.tabSecurity) }
-                )
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            when (selectedTab) {
-                0 -> ConnectTab(
-                    strings = strings,
-                    connectionState = connectionState,
-                    diagnostics = diagnostics,
-                    selectedEngine = selectedEngineId,
-                    onSelectEngine = { viewModel.setSelectedEngine(it) },
-                    onConnect = { viewModel.onConnectClicked(context) },
-                    onDisconnect = { viewModel.onDisconnectClicked() }
-                )
-                1 -> ServersTab(
-                    strings = strings,
-                    servers = servers,
-                    isFetching = isFetchingCommunity,
-                    isPinging = isPinging,
-                    onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
-                    onPingAll = { viewModel.pingAllServers() },
-                    onSelectServer = { viewModel.selectServer(it) },
-                    onImportClipboard = {
-                        val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                        if (text.isNotBlank()) {
-                            viewModel.importFromRawText(text)
-                        } else {
-                            Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-                2 -> SecuritySettingsTab(
-                    strings = strings,
-                    currentLanguage = language,
-                    onSelectLanguage = { viewModel.setLanguage(it) },
-                    killSwitch = killSwitchEnabled,
-                    onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
-                    onOpenAndroidSettings = {
-                        try {
-                            context.startActivity(KillSwitchManager.createVpnSettingsIntent())
-                        } catch (_: Exception) {
-                            Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    selectedDns = selectedDns,
-                    onSelectDns = { viewModel.setDnsProvider(it) },
-                    splitApps = splitApps,
-                    installedApps = installedApps,
-                    onToggleApp = { viewModel.toggleAppExclusion(it) },
-                    activeConfigText = activeConfigText,
-                    onUpdateConfig = { viewModel.updateActiveConfig(it) },
-                    isScanningCleanIps = isScanningCleanIps,
-                    cleanIps = cleanIps,
-                    onScanCleanIps = { viewModel.scanCleanIps() },
-                    onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) }
-                )
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "سرورها و پروفایل‌ها" else "Servers & Profiles") },
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
+                        )
+                    )
+                    NavigationDrawerItem(
+                        label = { Text(if (language == AppLanguage.PERSIAN) "امنیت و تنظیمات" else "Security & Settings") },
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedTextColor = Color(0xFFD3E2E4)
+                        )
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
+                    DrawerPlannedItem(Icons.Default.AutoAwesome, if (language == AppLanguage.PERSIAN) "مسیریابی هوشمند AI" else "AI Smart Routing")
+                    DrawerPlannedItem(Icons.Default.SystemUpdate, if (language == AppLanguage.PERSIAN) "به‌روزرسانی هسته‌ها" else "Core Updates")
+                    Spacer(Modifier.height(20.dp))
+                    Text("PREMIUM • PRIVATE • SECURE", color = Color(0xFF3ABFB9), fontSize = 10.sp, letterSpacing = 1.sp)
+                }
             }
         }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = if (language == AppLanguage.PERSIAN) "باز کردن منو" else "Open menu", tint = Color(0xFF43DCD3))
+                        }
+                    },
+                    title = {
+                        Column {
+                            Text(
+                                when (selectedTab) {
+                                    1 -> if (language == AppLanguage.PERSIAN) "سرورها" else "Servers"
+                                    2 -> if (language == AppLanguage.PERSIAN) "امنیت" else "Security"
+                                    else -> "MolidoVPN"
+                                },
+                                fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color.White
+                            )
+                            Text(
+                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی، کنترل هوشمند" else "Private connection • intelligent control",
+                                style = MaterialTheme.typography.bodySmall, color = Color(0xFF48CFC8), fontSize = 10.sp
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            val nextLang = if (language == AppLanguage.PERSIAN) AppLanguage.ENGLISH else AppLanguage.PERSIAN
+                            viewModel.setLanguage(nextLang)
+                        }) { Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF43DCD3)) }
+                        IconButton(onClick = { viewModel.refreshServers() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFFB4CBCD))
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF07131A))
+                )
+            },
+            containerColor = Color(0xFF07131A)
+        ) { paddingValues ->
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                when (selectedTab) {
+                    0 -> ConnectTab(
+                        strings = strings, connectionState = connectionState, diagnostics = diagnostics,
+                        killSwitchEnabled = killSwitchEnabled,
+                        selectedEngine = selectedEngineId,
+                        onSelectEngine = { viewModel.setSelectedEngine(it) },
+                        onConnect = { viewModel.onConnectClicked(context) },
+                        onDisconnect = { viewModel.onDisconnectClicked() }
+                    )
+                    1 -> ServersTab(
+                        strings = strings, servers = servers, isFetching = isFetchingCommunity,
+                        isPinging = isPinging,
+                        onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
+                        onPingAll = { viewModel.pingAllServers() },
+                        onSelectServer = { viewModel.selectServer(it) },
+                        onImportClipboard = {
+                            val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                            if (text.isNotBlank()) viewModel.importFromRawText(text)
+                            else Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    2 -> SecuritySettingsTab(
+                        strings = strings, currentLanguage = language,
+                        onSelectLanguage = { viewModel.setLanguage(it) },
+                        killSwitch = killSwitchEnabled, onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
+                        onOpenAndroidSettings = {
+                            try { context.startActivity(KillSwitchManager.createVpnSettingsIntent()) }
+                            catch (_: Exception) { Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show() }
+                        },
+                        selectedDns = selectedDns, onSelectDns = { viewModel.setDnsProvider(it) },
+                        splitApps = splitApps, installedApps = installedApps,
+                        onToggleApp = { viewModel.toggleAppExclusion(it) },
+                        activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) },
+                        isScanningCleanIps = isScanningCleanIps,
+                        cleanIps = cleanIps,
+                        onScanCleanIps = { viewModel.scanCleanIps() },
+                        onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrawerPlannedItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF54777D), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(title, color = Color(0xFF78969B), fontSize = 13.sp)
+        Spacer(Modifier.weight(1f))
+        Text("SOON", color = Color(0xFF54777D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -291,38 +359,148 @@ fun ConnectTab(
     strings: AppStrings,
     connectionState: ConnectionState,
     diagnostics: ConnectionDiagnostics,
+    killSwitchEnabled: Boolean,
     selectedEngine: String,
     onSelectEngine: (String) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
+    val isVerified = connectionState is ConnectionState.Connected
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            StatusCard(
-                strings = strings,
-                connectionState = connectionState,
-                selectedEngine = selectedEngine,
-                onConnect = onConnect,
-                onDisconnect = onDisconnect
-            )
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp)) {
+                Text(
+                    if (strings.appName == "MolidoVPN") "اتصال امن شما" else "Your secure connection",
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp
+                )
+                Text(
+                    if (strings.appName == "MolidoVPN") "وضعیت تونل و اطلاعات شبکه در یک نگاه" else "Tunnel and network status at a glance",
+                    color = Color(0xFF78999E), fontSize = 12.sp
+                )
+            }
         }
-
         item {
-            DiagnosticsCard(strings = strings, diagnostics = diagnostics, connectionState = connectionState)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B2028)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF15545A))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(18.dp).size(92.dp)
+                            .clip(RoundedCornerShape(50.dp)).background(Color(0xFF12B8B0).copy(alpha = 0.07f))
+                    )
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (strings.appName == "MolidoVPN") "وضعیت محافظت" else "PROTECTION STATUS", color = Color(0xFF9BB9BC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (isVerified) Color(0xFF0C594F) else Color(0xFF493A20)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                Text(if (isVerified) "VERIFIED" else "NOT CONNECTED", color = if (isVerified) Color(0xFF5BE0BD) else Color(0xFFFFCF70), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        StatusCard(strings, connectionState, selectedEngine, onConnect, onDisconnect)
+                    }
+                }
+            }
         }
-
         item {
-            SmartAutoEngineSelector(
-                strings = strings,
-                selectedEngine = selectedEngine,
-                onSelect = onSelectEngine
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                DashboardMetricCard(
+                    modifier = Modifier.weight(1f),
+                    title = if (strings.appName == "MolidoVPN") "IP خروجی" else "EXIT IP",
+                    value = "—",
+                    detail = if (isVerified) "در انتظار بررسی IP" else "پس از اتصال تأییدشده",
+                    icon = Icons.Default.Security
+                )
+                DashboardMetricCard(
+                    modifier = Modifier.weight(1f),
+                    title = if (strings.appName == "MolidoVPN") "موقعیت سرور" else "SERVER LOCATION",
+                    value = "—",
+                    detail = "داده واقعی هنوز موجود نیست",
+                    icon = Icons.Default.Language
+                )
+            }
         }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(if (strings.appName == "MolidoVPN") "عملکرد شبکه" else "NETWORK PERFORMANCE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        DashboardMetricCard(Modifier.weight(1f), "PING", diagnostics.lastLatencyMillis?.takeIf { isVerified }?.let { "$it ms" } ?: "—", "اندازه‌گیری واقعی", Icons.Default.Speed)
+                        DashboardMetricCard(Modifier.weight(1f), "DOWNLOAD", if (isVerified) "${diagnostics.bytesIn / 1024} KB" else "—", "ترافیک تونل", Icons.Default.CloudDownload)
+                        DashboardMetricCard(Modifier.weight(1f), "UPLOAD", if (isVerified) "${diagnostics.bytesOut / 1024} KB" else "—", "ترافیک تونل", Icons.Default.Sync)
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
+                    DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
+                    DashboardSecurityRow("Kill Switch", if (killSwitchEnabled) "تنظیم روشن است؛ آزمون عملکرد لازم است" else "تنظیم خاموش است", needsTest = true)
+                }
+            }
+        }
+        item {
+            SmartAutoEngineSelector(strings = strings, selectedEngine = selectedEngine, onSelect = onSelectEngine)
+        }
+        item { Spacer(Modifier.height(18.dp)) }
+    }
+}
+
+@Composable
+private fun DashboardMetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    detail: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = Color(0xFF42D8D0), modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(title, color = Color(0xFF8BAEB2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(detail, color = Color(0xFF718F94), fontSize = 9.sp)
+        }
+    }
+}
+
+@Composable
+private fun DashboardSecurityRow(title: String, detail: String, needsTest: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF36CFC7), modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color(0xFFE5F1F2), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(detail, color = Color(0xFF7F9DA1), fontSize = 10.sp)
+        }
+        Text(if (needsTest) "TEST" else "PENDING", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
