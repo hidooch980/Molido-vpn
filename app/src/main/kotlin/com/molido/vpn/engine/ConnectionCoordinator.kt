@@ -77,23 +77,25 @@ class ConnectionCoordinator(
 
     private fun handleEngineEvent(engineId: String, event: EngineEvent) {
         scope.launch {
-            when (event) {
-                is EngineEvent.TransportReady -> {
-                    dispatch(ConnectionEvent.EngineReady(engineId))
-                    verifyEgressTraffic(engineId)
-                }
-                is EngineEvent.Statistics -> {
-                    _diagnostics.value = _diagnostics.value.copy(
-                        bytesIn = event.bytesIn,
-                        bytesOut = event.bytesOut
-                    )
-                }
-                is EngineEvent.Failed -> {
-                    cleanupSession()
-                    if (event.recoverable) {
-                        dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
-                    } else {
-                        dispatch(ConnectionEvent.Fail(event.reasonCode))
+            mutex.withLock {
+                when (event) {
+                    is EngineEvent.TransportReady -> {
+                        dispatch(ConnectionEvent.EngineReady(engineId))
+                        verifyEgressTraffic(engineId)
+                    }
+                    is EngineEvent.Statistics -> {
+                        _diagnostics.value = _diagnostics.value.copy(
+                            bytesIn = event.bytesIn,
+                            bytesOut = event.bytesOut
+                        )
+                    }
+                    is EngineEvent.Failed -> {
+                        cleanupSession()
+                        if (event.recoverable) {
+                            dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
+                        } else {
+                            dispatch(ConnectionEvent.Fail(event.reasonCode))
+                        }
                     }
                 }
             }
@@ -117,12 +119,11 @@ class ConnectionCoordinator(
         }
     }
 
-    private fun cleanupSession() {
-        currentSession?.let { session ->
-            adapters[session.engineId]?.let { adapter ->
-                scope.launch { runCatching { adapter.disconnect(session) } }
-            }
-            currentSession = null
+    private suspend fun cleanupSession() {
+        val session = currentSession
+        currentSession = null
+        if (session != null) {
+            adapters[session.engineId]?.disconnect(session)
         }
         _diagnostics.value = _diagnostics.value.copy(
             activeEngineId = null,
@@ -132,8 +133,12 @@ class ConnectionCoordinator(
 
     fun disconnect() {
         connectJob?.cancel()
-        cleanupSession()
-        dispatch(ConnectionEvent.Stop)
+        scope.launch {
+            mutex.withLock {
+                runCatching { cleanupSession() }
+                dispatch(ConnectionEvent.Stop)
+            }
+        }
     }
 
     private fun dispatch(event: ConnectionEvent) {
