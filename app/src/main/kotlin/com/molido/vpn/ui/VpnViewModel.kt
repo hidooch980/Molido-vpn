@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.molido.vpn.data.EncryptedConfigStore
 import com.molido.vpn.data.FreeServerCatalog
+import com.molido.vpn.data.FreeServerProfile
 import com.molido.vpn.dns.DohDnsResolver
 import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
