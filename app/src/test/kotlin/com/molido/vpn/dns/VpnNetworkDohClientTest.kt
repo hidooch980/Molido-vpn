@@ -65,6 +65,16 @@ class VpnNetworkDohClientTest {
         DnsWireMessage.validateResponse(query, response)
     }
 
+    @Test
+    fun acceptsValidNxdomainResponse() {
+        val query = DnsWireMessage.createQuery("nonexistent.example", DnsRecordType.A)
+        val response = query.copyOf().apply {
+            this[2] = 0x81.toByte()
+            this[3] = 0x83.toByte()
+        }
+        DnsWireMessage.validateResponse(query, response)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsDnsErrorResponse() {
         val query = DnsWireMessage.createQuery("example.com", DnsRecordType.A)
