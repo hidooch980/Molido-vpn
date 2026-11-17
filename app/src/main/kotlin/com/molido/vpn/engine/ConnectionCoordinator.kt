@@ -81,8 +81,10 @@ class ConnectionCoordinator(
                 val interfaceReady = try {
                     onVpnInterfaceRequested(engineId, configuration)
                 } catch (cancelled: CancellationException) {
+                    cleanupSessionLocked()
                     throw cancelled
                 } catch (_: Exception) {
+                    cleanupSessionLocked()
                     dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
                     return@withLock
                 }
@@ -139,6 +141,7 @@ class ConnectionCoordinator(
         val verification = try {
             trafficVerifier.verify(timeoutMillis = 4_000L)
         } catch (cancelled: CancellationException) {
+            cleanupSessionLocked()
             throw cancelled
         } catch (_: Exception) {
             cleanupSessionLocked()
