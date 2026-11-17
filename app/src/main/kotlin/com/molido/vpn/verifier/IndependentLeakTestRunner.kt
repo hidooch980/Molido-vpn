@@ -61,6 +61,11 @@ class IndependentLeakTestRunner(context: Context) {
             ?.takeIf { it.matches(Regex("[A-Za-z0-9-]{1,64}")) }
             ?: return@withContext DnsResolverObservation(false, emptyList(), errorCode = "DNS_TEST_ID_UNAVAILABLE")
 
+        // Register the public source address independently over IPv4 and IPv6,
+        // matching the authoritative test client's flow.
+        fetchText(network, URL("https://ipv4.bash.ws/myip/test/$testId"), 128)
+        fetchText(network, URL("https://ipv6.bash.ws/myip/test/$testId"), 128)
+
         // Follow bash.ws's documented two-phase flow: resolve unique numbered
         // subdomains through Android's system resolver, then fetch authoritative
         // resolver observations for the same test ID.
