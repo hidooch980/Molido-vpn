@@ -145,6 +145,30 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun recoverableBackendShutdownReconnectsWithBoundedRecovery() = runTest {
+        val adapter = RecoveringTestAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+        assertEquals(1, adapter.connectCalls)
+
+        adapter.eventSink?.invoke(EngineEvent.Failed("WIREGUARD_BACKEND_STOPPED", recoverable = true))
+        advanceUntilIdle()
+
+        assertTrue("A recoverable backend stop should reconnect after teardown", coordinator.state.value is ConnectionState.Connected)
+        assertEquals(2, adapter.connectCalls)
+    }
+
+    @Test
     fun networkHandoverTriggersFreshEgressVerificationAndFailsClosedOnFailure() = runTest {
         val verifier = MockTrafficVerifier(simulatedSuccess = true)
         val adapter = TestReadyAdapter()
@@ -193,6 +217,32 @@ class ConnectionCoordinatorTest {
         assertTrue("State should be Failed, but was: $state", state is ConnectionState.Failed)
         val failed = state as ConnectionState.Failed
         assertTrue(failed.reasonCode.contains("Egress test failed"))
+    }
+
+    private class RecoveringTestAdapter : EngineAdapter {
+        override val id: String = "recovering-test"
+        override val displayName: String = "Recovering test adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var connectCalls = 0
+        var eventSink: ((EngineEvent) -> Unit)? = null
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            connectCalls++
+            eventSink = onEvent
+            onEvent(EngineEvent.TransportReady)
+            return object : EngineSession {
+                override val engineId: String = id
+            }
+        }
+
+        override suspend fun disconnect(session: EngineSession) = Unit
     }
 
     private class RetryDisconnectAdapter : EngineAdapter {
