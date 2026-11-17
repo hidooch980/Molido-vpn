@@ -73,10 +73,55 @@ class WireGuardEngineAdapterTest {
             override fun getName(): String = "retry-test"
             override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
         }
-        val session = adapter.WireGuardSession(tunnel, java.util.concurrent.atomic.AtomicBoolean(true))
+        val session = adapter.WireGuardSession(
+            tunnel,
+            java.util.concurrent.atomic.AtomicBoolean(true),
+            onEvent = {}
+        )
         assertTrue(session.beginClose())
         session.allowCloseRetry()
         assertTrue("A failed backend shutdown must allow another close attempt", session.beginClose())
+    }
+
+    @Test
+    fun unexpectedBackendShutdownEmitsRecoverableFailure() {
+        val adapter = WireGuardEngineAdapter()
+        val events = mutableListOf<EngineEvent>()
+        val tunnel = object : com.wireguard.android.backend.Tunnel {
+            override fun getName(): String = "unexpected-down-test"
+            override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
+        }
+        val session = adapter.WireGuardSession(
+            tunnel,
+            java.util.concurrent.atomic.AtomicBoolean(true),
+            onEvent = { events.add(it) }
+        )
+        session.markStartupComplete()
+        session.onBackendStateChange(com.wireguard.android.backend.Tunnel.State.DOWN)
+
+        val failure = events.single() as EngineEvent.Failed
+        assertEquals("WIREGUARD_BACKEND_STOPPED", failure.reasonCode)
+        assertTrue(failure.recoverable)
+        assertTrue(!session.isActive)
+    }
+
+    @Test
+    fun intentionalShutdownDoesNotEmitUnexpectedFailure() {
+        val adapter = WireGuardEngineAdapter()
+        val events = mutableListOf<EngineEvent>()
+        val tunnel = object : com.wireguard.android.backend.Tunnel {
+            override fun getName(): String = "intentional-down-test"
+            override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
+        }
+        val session = adapter.WireGuardSession(
+            tunnel,
+            java.util.concurrent.atomic.AtomicBoolean(true),
+            onEvent = { events.add(it) }
+        )
+        session.markStartupComplete()
+        assertTrue(session.beginClose())
+        session.onBackendStateChange(com.wireguard.android.backend.Tunnel.State.DOWN)
+        assertTrue(events.isEmpty())
     }
 
     @Test
