@@ -17,9 +17,17 @@ concurrency:
 
 jobs:
   cleanup:
-    if: ${{ inputs.confirm == 'DELETE_PRE_5_RELEASES_AND_TAGS' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Validate destructive cleanup confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          test "$CONFIRM" = "DELETE_PRE_5_RELEASES_AND_TAGS" || {
+            echo "::error::Exact destructive-cleanup confirmation was not supplied."
+            exit 1
+          }
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -59,8 +67,3 @@ jobs:
           echo "Remaining version tags:"
           git ls-remote --tags --refs origin 'refs/tags/v*' | awk '{sub("refs/tags/", "", $2); print $2}' | sort -u
 
-      - name: Reject missing confirmation
-        if: ${{ inputs.confirm != 'DELETE_PRE_5_RELEASES_AND_TAGS' }}
-        run: |
-          echo "::error::Exact destructive-cleanup confirmation was not supplied."
-          exit 1
