@@ -208,8 +208,16 @@ object SubscriptionManager {
         val bytes = address.address
         if (bytes.size == 16) {
             val first = bytes[0].toInt() and 0xff
-            // IPv6 unique-local (fc00::/7), IPv4-mapped IPv6 and documentation space.
-            if ((first and 0xfe) == 0xfc) return true
+            // Accept only IPv6 global-unicast 2000::/3. This rejects unspecified,
+            // loopback, link-local, unique-local, multicast and reserved ranges.
+            if ((first and 0xe0) != 0x20) return true
+            // Reject documentation (2001:db8::/32), benchmarking (2001:2::/48),
+            // and IPv4-mapped/translated special forms even if platform flags miss them.
+            val second = bytes[1].toInt() and 0xff
+            val third = bytes[2].toInt() and 0xff
+            val fourth = bytes[3].toInt() and 0xff
+            if (first == 0x20 && second == 0x01 && third == 0x0d && fourth == 0xb8) return true
+            if (first == 0x20 && second == 0x01 && third == 0x00 && fourth == 0x02) return true
             if (bytes.take(12).all { it.toInt() == 0 } &&
                 bytes[10].toInt() == -1 && bytes[11].toInt() == -1
             ) {
@@ -225,7 +233,8 @@ object SubscriptionManager {
                 (a == 169 && b == 254) ||
                 (a == 172 && b in 16..31) ||
                 (a == 192 && (b == 168 || b == 0)) ||
-                (a == 198 && b in 18..19)
+                (a == 198 && (b in 18..19 || b == 51)) ||
+                (a == 203 && b == 0)
         }
         return true
     }
