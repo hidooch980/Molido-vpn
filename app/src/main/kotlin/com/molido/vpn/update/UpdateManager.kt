@@ -7,6 +7,7 @@ import com.molido.vpn.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -56,9 +57,19 @@ object UpdateManager {
                 val length = connection.getHeaderFieldLong("Content-Length", -1L)
                 if (length > MAX_RELEASE_METADATA_BYTES) throw IOException("Release metadata is too large")
                 val jsonString = connection.inputStream.use { input ->
-                    val bytes = input.readNBytes(MAX_RELEASE_METADATA_BYTES + 1)
-                    if (bytes.size > MAX_RELEASE_METADATA_BYTES) throw IOException("Release metadata is too large")
-                    bytes.toString(Charsets.UTF_8)
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_RELEASE_METADATA_BYTES) {
+                            throw IOException("Release metadata is too large")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toString(Charsets.UTF_8.name())
                 }
                 val json = JSONObject(jsonString)
                 if (json.optBoolean("draft", true) || json.optBoolean("prerelease", true)) {
