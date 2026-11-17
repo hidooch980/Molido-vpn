@@ -16,22 +16,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The upstream GoBackend service is the single WireGuard TUN owner. -->
         <service
-            android:name=".vpn.MolidoVpnService"
+            android:name="com.wireguard.android.backend.GoBackend$VpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
-            </intent-filter>
-        </service>
-        <service
-            android:name=".tile.MolidoTileService"
-            android:label="MolidoVPN"
-            android:icon="@android:drawable/ic_lock_lock"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
     </application>
