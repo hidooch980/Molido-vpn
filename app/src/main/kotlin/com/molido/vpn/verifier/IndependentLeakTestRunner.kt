@@ -4,8 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import com.molido.vpn.dns.DnsWireMessage
-import com.molido.vpn.dns.DnsRecordType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -168,7 +166,7 @@ class IndependentLeakTestRunner(context: Context) {
     private fun isIpLiteral(value: String): Boolean {
         if (value.isBlank() || value.length > 45 || value.any { it.isWhitespace() }) return false
         val ipv4 = value.matches(Regex("\\d{1,3}(?:\\.\\d{1,3}){3}")) &&
-            value.split('.').all { it.toIntOrNull() in 0..255 }
+            value.split('.').all { part -> part.toIntOrNull()?.let { it in 0..255 } == true }
         if (ipv4) return true
         if (!value.contains(':') || !value.matches(Regex("[0-9a-fA-F:.]+"))) return false
         return runCatching { InetAddress.getByName(value).address.size == 16 }.getOrDefault(false)
