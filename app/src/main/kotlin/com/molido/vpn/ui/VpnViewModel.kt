@@ -273,7 +273,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         independentLeakTestRunner.checkIpv4AndIpv6()
 
     /**
-     * Sends a random one-time DNS probe to an external authoritative test service.
+     * Uses a one-time bash.ws test ID and unique system-resolver queries.
      * An empty resolver list is inconclusive, not proof of no leak.
      */
     suspend fun runSystemDnsLeakDiagnostic(): DnsResolverObservation =
