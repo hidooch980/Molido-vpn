@@ -214,6 +214,21 @@ class ConnectionCoordinator(
             teardownSucceeded
         }
 
+    /**
+     * Re-checks the active tunnel after Android reports a validated physical
+     * network handover. A failed probe tears down the session fail-closed.
+     */
+    fun verifyActiveTunnelAfterNetworkChange() {
+        scope.launch {
+            lifecycleMutex.withLock {
+                val session = currentSession ?: return@withLock
+                if (_state.value is ConnectionState.Connected) {
+                    verifyEgressTrafficLocked(session.engineId)
+                }
+            }
+        }
+    }
+
     fun disconnect() {
         scope.launch {
             lifecycleMutex.withLock {
