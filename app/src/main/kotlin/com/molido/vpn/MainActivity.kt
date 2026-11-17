@@ -593,40 +593,66 @@ fun SmartAutoEngineSelector(
         }
 
         Spacer(modifier = Modifier.height(10.dp))
-
-        // Protocol Specific Chips
+        Text(
+            if (strings.appName == "MolidoVPN") "موتورهای دیگر تا پذیرش واقعی WireGuard غیرفعال هستند" else "Other engines remain disabled until WireGuard device acceptance",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF94A3B8)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
-                selected = selectedEngine == "warp",
-                onClick = { onSelect("warp") },
-                label = { Text("WARP (Free)") },
+                selected = selectedEngine == "wireguard",
+                enabled = BuildConfig.DEBUG,
+                onClick = { onSelect("wireguard") },
+                label = { Text(if (BuildConfig.DEBUG) "WireGuard · Internal" else "WireGuard · Locked") },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
-                selected = selectedEngine == "amnezia",
-                onClick = { onSelect("amnezia") },
+                selected = false,
+                enabled = false,
+                onClick = {},
                 label = { Text("AmneziaWG") },
                 modifier = Modifier.weight(1f)
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
-                selected = selectedEngine == "xray",
-                onClick = { onSelect("xray") },
-                label = { Text("Xray / VLESS") },
+                selected = false,
+                enabled = false,
+                onClick = {},
+                label = { Text("Xray · VLESS") },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
-                selected = selectedEngine == "wireguard",
-                onClick = { onSelect("wireguard") },
-                label = { Text("WireGuard") },
+                selected = false,
+                enabled = false,
+                onClick = {},
+                label = { Text("sing-box") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = false,
+                enabled = false,
+                onClick = {},
+                label = { Text("Hysteria 2") },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = false,
+                enabled = false,
+                onClick = {},
+                label = { Text("Shadowsocks 2022") },
                 modifier = Modifier.weight(1f)
             )
         }
