@@ -241,12 +241,52 @@ class ConnectionCoordinator(
      * Re-checks the active tunnel after Android reports a validated physical
      * network handover. A failed probe triggers bounded recovery only after teardown succeeds.
      */
+    /**
+     * Called only after the monitor confirms that no validated physical
+     * non-VPN network remains. Tear down before entering Recovering; never
+     * spin reconnect attempts while the device is offline.
+     */
+    fun onPhysicalNetworkLost() {
+        recoveryJob?.cancel()
+        recoveryJob = null
+        scope.launch {
+            lifecycleMutex.withLock {
+                val session = currentSession
+                if (session != null) {
+                    val cleaned = cleanupSessionLocked()
+                    if (cleaned) {
+                        dispatch(ConnectionEvent.Recover(session.engineId, "NO_USABLE_PHYSICAL_NETWORK"))
+                    } else {
+                        dispatch(ConnectionEvent.Fail("TUN_TEARDOWN_FAILED"))
+                    }
+                } else if (_state.value is ConnectionState.Preparing) {
+                    pendingEngineId = null
+                    pendingConfiguration = null
+                    dispatch(ConnectionEvent.Fail("NO_USABLE_PHYSICAL_NETWORK"))
+                }
+            }
+        }
+    }
+
     fun verifyActiveTunnelAfterNetworkChange() {
         scope.launch {
             lifecycleMutex.withLock {
-                val session = currentSession ?: return@withLock
-                if (_state.value is ConnectionState.Connected) {
+                val session = currentSession
+                if (session != null && _state.value is ConnectionState.Connected) {
                     verifyEgressTrafficLocked(session.engineId, recoverOnFailure = true)
+                } else if (session == null &&
+                    (_state.value is ConnectionState.Recovering || _state.value is ConnectionState.Failed)
+                ) {
+                    val engineId = lastActiveConfiguration?.let { config ->
+                        adapters.keys.firstOrNull { it == _diagnostics.value.activeEngineId }
+                    }
+                    val config = lastActiveConfiguration
+                    if (config != null) {
+                        val recoverEngineId = engineId ?: _state.value.let {
+                            (it as? ConnectionState.Recovering)?.previousEngineId
+                        }
+                        if (recoverEngineId != null) scheduleRecovery(recoverEngineId, config)
+                    }
                 }
             }
         }
