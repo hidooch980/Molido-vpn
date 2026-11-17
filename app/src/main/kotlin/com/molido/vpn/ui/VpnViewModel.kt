@@ -99,6 +99,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     val language: StateFlow<AppLanguage> = _language.asStateFlow()
 
     private val _selectedEngineId = MutableStateFlow("auto") // Default to Smart Auto Connect
+    private var pendingPermissionRequest: Pair<String, EngineConfiguration>? = null
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
     private val _activeConfigText = MutableStateFlow(
@@ -389,15 +390,22 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (route != null) updateActiveConfig(route.payload)
 
+        pendingPermissionRequest = engine to config
         viewModelScope.launch {
             coordinator.requestConnect(engine, config)
             val vpnIntent = VpnService.prepare(context)
-            if (vpnIntent != null) _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
-            else coordinator.onVpnPermissionGranted(engine, config)
+            if (vpnIntent != null) {
+                _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
+            } else {
+                pendingPermissionRequest = null
+                coordinator.onVpnPermissionGranted(engine, config)
+            }
         }
     }
 
     fun onPermissionResult(isGranted: Boolean) {
+        val pending = pendingPermissionRequest
+        pendingPermissionRequest = null
         if (!isGranted) {
             viewModelScope.launch {
                 _effects.emit(VpnUiEffect.ShowToast(
@@ -408,22 +416,18 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val selected = _selectedEngineId.value
-        val route = if (selected == "auto") _servers.value.firstOrNull { it.score.eligible } else null
-        val engine = route?.engineId ?: selected.takeUnless { it == "auto" }
-        val payload = route?.payload ?: _activeConfigText.value
-        if (engine == null || payload.isBlank()) {
-            coordinator.disconnect()
+        if (pending == null) {
             viewModelScope.launch {
                 _effects.emit(VpnUiEffect.ShowToast(
                     if (_language.value == AppLanguage.PERSIAN)
-                        "پروفایل معتبر یا مسیر اندازه‌گیری‌شده موجود نیست"
-                    else "No valid profile or measured route is available"
+                        "درخواست اتصال منقضی شده است؛ دوباره تلاش کنید"
+                    else "The connection request expired; please try again"
                 ))
             }
+            coordinator.disconnect()
             return
         }
-        coordinator.onVpnPermissionGranted(engine, EngineConfiguration(payload.toByteArray(Charsets.UTF_8)))
+        coordinator.onVpnPermissionGranted(pending.first, pending.second)
     }
 
     fun pingAllServers() {
