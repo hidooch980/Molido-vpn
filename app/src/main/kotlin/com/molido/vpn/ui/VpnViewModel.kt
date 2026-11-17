@@ -40,7 +40,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ServerItem(
     val id: String,
@@ -121,6 +123,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isFetchingCommunity = MutableStateFlow(false)
     val isFetchingCommunity: StateFlow<Boolean> = _isFetchingCommunity.asStateFlow()
+
+    private val _subscriptionUrls = MutableStateFlow(configStore.getSubscriptions())
+    val subscriptionUrls: StateFlow<List<String>> = _subscriptionUrls.asStateFlow()
 
     private val _isPinging = MutableStateFlow(false)
     val isPinging: StateFlow<Boolean> = _isPinging.asStateFlow()
@@ -219,6 +224,49 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 _effects.emit(VpnUiEffect.ShowToast("خطا در ورود: ${e.message}"))
             }
+        }
+    }
+
+    fun addSubscription(rawUrl: String) {
+        viewModelScope.launch {
+            try {
+                val normalized = withContext(Dispatchers.IO) {
+                    SubscriptionManager.validateSubscriptionUrl(rawUrl).toExternalForm()
+                }
+                val updated = (_subscriptionUrls.value + normalized).distinct()
+                configStore.saveSubscriptions(updated)
+                _subscriptionUrls.value = updated
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "اشتراک با موفقیت ذخیره شد" else "Subscription saved"
+                ))
+            } catch (error: Exception) {
+                val reason = error.message ?: "SUBSCRIPTION_URL_INVALID"
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "آدرس اشتراک معتبر نیست: $reason" else "Invalid subscription URL: $reason"
+                ))
+            }
+        }
+    }
+
+    fun removeSubscription(url: String) {
+        val updated = _subscriptionUrls.value.filterNot { it == url }
+        configStore.saveSubscriptions(updated)
+        _subscriptionUrls.value = updated
+    }
+
+    fun refreshSubscriptionsNow() {
+        val request = androidx.work.OneTimeWorkRequestBuilder<com.molido.vpn.importer.SubscriptionRefreshWorker>()
+            .setConstraints(
+                androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        androidx.work.WorkManager.getInstance(getApplication()).enqueue(request)
+        viewModelScope.launch {
+            _effects.emit(VpnUiEffect.ShowToast(
+                if (_language.value == AppLanguage.PERSIAN) "به‌روزرسانی اشتراک‌ها در صف اجرا قرار گرفت" else "Subscription refresh queued"
+            ))
         }
     }
 
