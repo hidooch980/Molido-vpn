@@ -111,6 +111,8 @@ import com.molido.vpn.ui.AppStrings
 import com.molido.vpn.ui.Localization
 import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
+import com.molido.vpn.verifier.AddressFamilyProbe
+import com.molido.vpn.verifier.DnsResolverObservation
 import com.molido.vpn.ui.VpnViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -168,6 +170,9 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val activeConfigText by viewModel.activeConfigText.collectAsState()
     val killSwitchEnabled by viewModel.killSwitchEnabled.collectAsState()
     val selectedDns by viewModel.selectedDns.collectAsState()
+    val isRunningLeakDiagnostics by viewModel.isRunningLeakDiagnostics.collectAsState()
+    val addressFamilyDiagnostics by viewModel.addressFamilyDiagnostics.collectAsState()
+    val dnsResolverObservation by viewModel.dnsResolverObservation.collectAsState()
     val splitApps by viewModel.splitApps.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
@@ -350,6 +355,10 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                             catch (_: Exception) { Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show() }
                         },
                         selectedDns = selectedDns, onSelectDns = { viewModel.setDnsProvider(it) },
+                        isRunningLeakDiagnostics = isRunningLeakDiagnostics,
+                        addressFamilyDiagnostics = addressFamilyDiagnostics,
+                        dnsResolverObservation = dnsResolverObservation,
+                        onRunLeakDiagnostics = { viewModel.runIndependentLeakDiagnostics() },
                         splitApps = splitApps, installedApps = installedApps,
                         onToggleApp = { viewModel.toggleAppExclusion(it) },
                         activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) }
@@ -852,6 +861,10 @@ fun SecuritySettingsTab(
     onOpenAndroidSettings: () -> Unit,
     selectedDns: String,
     onSelectDns: (String) -> Unit,
+    isRunningLeakDiagnostics: Boolean,
+    addressFamilyDiagnostics: List<AddressFamilyProbe>?,
+    dnsResolverObservation: DnsResolverObservation?,
+    onRunLeakDiagnostics: () -> Unit,
     splitApps: Set<String>,
     installedApps: List<com.molido.vpn.policy.AppInfo>,
     onToggleApp: (String) -> Unit,
@@ -966,6 +979,70 @@ fun SecuritySettingsTab(
                                 Text(provider.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Independent DNS and address-family diagnostics
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        if (currentLanguage == AppLanguage.PERSIAN) "آزمون مستقل نشت DNS و IP" else "Independent DNS & IP Leak Diagnostics",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (currentLanguage == AppLanguage.PERSIAN)
+                            "با اجرای دستی، دو سرویس ipify برای IPv4/IPv6 و سرویس bash.ws برای مشاهده DNS استفاده می‌شوند. این سرویس‌ها IP مبدأ درخواست و داده آزمون را دریافت می‌کنند. نتیجه خالی به معنی نبود نشت نیست."
+                        else
+                            "Manual test contacts ipify for separate IPv4/IPv6 probes and bash.ws to observe DNS resolvers. These services receive your request source IP and test data. Empty results are inconclusive, not proof of no leak.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = onRunLeakDiagnostics,
+                        enabled = !isRunningLeakDiagnostics,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isRunningLeakDiagnostics) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            if (isRunningLeakDiagnostics) {
+                                if (currentLanguage == AppLanguage.PERSIAN) "در حال آزمون..." else "Testing..."
+                            } else {
+                                if (currentLanguage == AppLanguage.PERSIAN) "اجرای آزمون‌ها" else "Run diagnostics"
+                            }
+                        )
+                    }
+                    addressFamilyDiagnostics?.forEach { result ->
+                        Text(
+                            "${result.family}: " + if (result.reachable) result.publicAddress.orEmpty()
+                            else (result.errorCode ?: "INCONCLUSIVE"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.reachable) Color(0xFF34D399) else Color(0xFFFBBF24)
+                        )
+                    }
+                    dnsResolverObservation?.let { observation ->
+                        Text(
+                            if (observation.evidenceAvailable) {
+                                (if (currentLanguage == AppLanguage.PERSIAN) "DNSهای مشاهده‌شده: " else "Observed DNS resolvers: ") +
+                                    observation.resolverAddresses.joinToString()
+                            } else {
+                                if (currentLanguage == AppLanguage.PERSIAN)
+                                    "نتیجه DNS قطعی نیست: ${observation.errorCode ?: "نامشخص"}"
+                                else "DNS result inconclusive: ${observation.errorCode ?: "unknown"}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFBBF24)
+                        )
                     }
                 }
             }
