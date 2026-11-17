@@ -73,6 +73,15 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val independentLeakTestRunner = IndependentLeakTestRunner(application)
 
+    private val _isRunningLeakDiagnostics = MutableStateFlow(false)
+    val isRunningLeakDiagnostics: StateFlow<Boolean> = _isRunningLeakDiagnostics.asStateFlow()
+
+    private val _addressFamilyDiagnostics = MutableStateFlow<List<AddressFamilyProbe>?>(null)
+    val addressFamilyDiagnostics: StateFlow<List<AddressFamilyProbe>?> = _addressFamilyDiagnostics.asStateFlow()
+
+    private val _dnsResolverObservation = MutableStateFlow<DnsResolverObservation?>(null)
+    val dnsResolverObservation: StateFlow<DnsResolverObservation?> = _dnsResolverObservation.asStateFlow()
+
     private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter()
@@ -218,6 +227,26 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             context = getApplication(),
             providerId = _selectedDns.value
         ).resolve(hostname, recordType)
+    }
+
+    fun runIndependentLeakDiagnostics() {
+        if (_isRunningLeakDiagnostics.value) return
+        viewModelScope.launch {
+            _isRunningLeakDiagnostics.value = true
+            try {
+                _addressFamilyDiagnostics.value = runCatching {
+                    independentLeakTestRunner.checkIpv4AndIpv6()
+                }.getOrElse { error ->
+                    listOf(
+                        AddressFamilyProbe("IPv4", false, errorCode = error.message ?: "VPN_NOT_READY"),
+                        AddressFamilyProbe("IPv6", false, errorCode = error.message ?: "VPN_NOT_READY")
+                    )
+                }
+                _dnsResolverObservation.value = independentLeakTestRunner.observeSystemDnsResolvers()
+            } finally {
+                _isRunningLeakDiagnostics.value = false
+            }
+        }
     }
 
     suspend fun runAddressFamilyDiagnostics(): List<AddressFamilyProbe> =
