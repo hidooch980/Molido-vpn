@@ -5,7 +5,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.HttpsURLConnection
+import javax.net.ssl.HttpsURLConnection
 import java.net.InetSocketAddress
 import java.net.Socket
 import javax.net.ssl.SSLSocketFactory
