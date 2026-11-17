@@ -96,13 +96,13 @@ class ConnectionCoordinator(
                     cleanupSessionLocked()
                     throw cancelled
                 } catch (_: Exception) {
-                    cleanupSessionLocked()
-                    dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
+                    val cleaned = cleanupSessionLocked()
+                    dispatch(ConnectionEvent.Fail(if (cleaned) "TUN_INTERFACE_SETUP_FAILED" else "TUN_TEARDOWN_FAILED"))
                     return@withLock
                 }
                 if (!interfaceReady) {
-                    cleanupSessionLocked()
-                    dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
+                    val cleaned = cleanupSessionLocked()
+                    dispatch(ConnectionEvent.Fail(if (cleaned) "TUN_INTERFACE_SETUP_FAILED" else "TUN_TEARDOWN_FAILED"))
                     return@withLock
                 }
                 try {
@@ -117,8 +117,8 @@ class ConnectionCoordinator(
                     dispatch(ConnectionEvent.Fail("CONNECTION_CANCELLED"))
                     throw cancelled
                 } catch (_: Exception) {
-                    cleanupSessionLocked()
-                    dispatch(ConnectionEvent.Fail("ENGINE_CONNECTION_FAILED"))
+                    val cleaned = cleanupSessionLocked()
+                    dispatch(ConnectionEvent.Fail(if (cleaned) "ENGINE_CONNECTION_FAILED" else "TUN_TEARDOWN_FAILED"))
                 }
             }
         }
@@ -140,9 +140,14 @@ class ConnectionCoordinator(
                         )
                     }
                     is EngineEvent.Failed -> {
-                        cleanupSessionLocked()
-                        if (event.recoverable) dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
-                        else dispatch(ConnectionEvent.Fail(event.reasonCode))
+                        val cleaned = cleanupSessionLocked()
+                        if (!cleaned) {
+                            dispatch(ConnectionEvent.Fail("TUN_TEARDOWN_FAILED"))
+                        } else if (event.recoverable) {
+                            dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
+                        } else {
+                            dispatch(ConnectionEvent.Fail(event.reasonCode))
+                        }
                     }
                 }
             }
@@ -156,8 +161,8 @@ class ConnectionCoordinator(
             cleanupSessionLocked()
             throw cancelled
         } catch (_: Exception) {
-            cleanupSessionLocked()
-            dispatch(ConnectionEvent.Fail("EGRESS_VERIFICATION_FAILED"))
+            val cleaned = cleanupSessionLocked()
+            dispatch(ConnectionEvent.Fail(if (cleaned) "EGRESS_VERIFICATION_FAILED" else "TUN_TEARDOWN_FAILED"))
             return
         }
         if (verification.success && currentSession?.engineId == engineId) {
@@ -170,8 +175,11 @@ class ConnectionCoordinator(
             )
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
-            cleanupSessionLocked()
-            dispatch(ConnectionEvent.Fail(verification.errorMessage ?: "EGRESS_VERIFICATION_FAILED"))
+            val cleaned = cleanupSessionLocked()
+            dispatch(ConnectionEvent.Fail(
+                if (cleaned) verification.errorMessage ?: "EGRESS_VERIFICATION_FAILED"
+                else "TUN_TEARDOWN_FAILED"
+            ))
         }
     }
 
