@@ -130,7 +130,7 @@ class EncryptedConfigStore(context: Context) {
     @Synchronized
     fun saveSubscriptions(urls: List<String>) {
         val normalized = urls.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        val encrypted = encryptText(normalized.joinToString("\\n"), SUBSCRIPTIONS_AAD)
+        val encrypted = encryptText(normalized.joinToString("\n"), SUBSCRIPTIONS_AAD)
         check(prefs.edit()
             .putString(KEY_SUBSCRIPTIONS_ENCRYPTED, encrypted)
             .remove(KEY_SUBSCRIPTIONS)
