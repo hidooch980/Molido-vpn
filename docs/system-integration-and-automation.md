@@ -42,7 +42,7 @@ A UI item or catalog entry is never evidence that its feature is operational.
 
 1. Every pull request and push to main runs Android unit tests.
 2. Android lint runs even when unit tests fail, unless the workflow is cancelled.
-3. Debug APK assembly runs only after preceding checks pass; it is a CI artifact, not a release.
+3. Android instrumentation test sources are compile-checked only; CI does not assemble, install, upload, or distribute test APKs. Physical Keystore and VPN behavior require device acceptance.
 4. Test and lint reports are uploaded for diagnosis, including failed runs.
 5. CI concurrency cancels obsolete runs for the same ref.
 6. Dependabot opens weekly Gradle and GitHub Actions update PRs. Dependency updates still require CI and review.
