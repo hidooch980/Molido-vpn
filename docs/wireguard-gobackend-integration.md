@@ -14,7 +14,7 @@
 ## Important boundaries
 
 - A backend state of UP proves that the userspace tunnel was activated, not that the peer completed a handshake or that the internet is reachable.
-- A successful HTTPS egress probe must traverse Android's active VPN Network. DNS and IPv6 leak behavior still require dedicated physical-device tests.
+- A successful HTTPS egress probe must traverse Android's active VPN Network. The RFC 8484 client now binds app-owned DNS requests to that VPN Network, but Android system UDP/53 traffic is not intercepted or converted to DoH. DNS and IPv6 leak behavior still require dedicated physical-device tests.
 - The Quick Settings tile is intentionally not declared while it still targets the removed legacy service. It must be reimplemented against the shared tunnel controller before being re-enabled.
 - No physical-device acceptance has been performed in this integration change.
 
