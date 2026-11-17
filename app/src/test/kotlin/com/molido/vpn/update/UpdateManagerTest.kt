@@ -25,5 +25,7 @@ class UpdateManagerTest {
         assertFalse(UpdateManager.isNewerVersion("latest", "1.0.0"))
         assertFalse(UpdateManager.isNewerVersion("1.0", "0.9.0"))
         assertFalse(UpdateManager.isNewerVersion("1.0.0-beta", "1.0.0"))
+        assertFalse(UpdateManager.isNewerVersion("999999999999.0.0", "1.0.0"))
+        assertFalse(UpdateManager.isNewerVersion("1..0", "1.0.0"))
     }
 }
