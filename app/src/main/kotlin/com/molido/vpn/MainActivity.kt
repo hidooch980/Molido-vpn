@@ -108,8 +108,6 @@ import com.molido.vpn.ui.Localization
 import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
 import com.molido.vpn.ui.VpnViewModel
-import com.molido.vpn.update.UpdateInfo
-import com.molido.vpn.update.UpdateManager
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -168,11 +166,6 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val splitApps by viewModel.splitApps.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
-    val isPinging by viewModel.isPinging.collectAsState()
-    val isScanningCleanIps by viewModel.isScanningCleanIps.collectAsState()
-    val cleanIps by viewModel.cleanIps.collectAsState()
-    val updateInfo by viewModel.updateInfo.collectAsState()
-    val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -185,52 +178,6 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 is VpnUiEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
             }
         }
-    }
-
-    if (updateInfo?.hasUpdate == true) {
-        val info = updateInfo!!
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissUpdateDialog() },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = Color(0xFF42E2D7))
-                    Spacer(Modifier.width(8.dp))
-                    Text(strings.updateAvailable, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                }
-            },
-            text = {
-                Column {
-                    Text(
-                        "${strings.currentVersionLabel}: v${info.currentVersion} ➔ v${info.latestVersion}",
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF10B981),
-                        fontSize = 14.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    if (info.releaseNotes.isNotBlank()) {
-                        Text(info.releaseNotes, style = MaterialTheme.typography.bodySmall, color = Color(0xFFE2E8F0))
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        UpdateManager.openDownloadPage(context, info.downloadUrl)
-                        viewModel.dismissUpdateDialog()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
-                ) {
-                    Text(strings.updateDownloadAction)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                    Text(strings.updateLaterAction, color = Color(0xFF94A3B8))
-                }
-            },
-            containerColor = Color(0xFF0F242C),
-            shape = RoundedCornerShape(16.dp)
-        )
     }
 
     ModalNavigationDrawer(
@@ -297,16 +244,13 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(if (language == AppLanguage.PERSIAN) "بررسی به‌روزرسانی برنامه" else "Check for Updates") },
-                        selected = false,
-                        onClick = {
-                            viewModel.checkForUpdates(silent = false)
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = { Icon(Icons.Default.SystemUpdate, contentDescription = null) },
+                        label = { Text(if (language == AppLanguage.PERSIAN) "مرکز امکانات" else "Feature Center") },
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
                         colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
                             selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
-                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
@@ -314,6 +258,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
                     DrawerPlannedItem(Icons.Default.AutoAwesome, if (language == AppLanguage.PERSIAN) "مسیریابی هوشمند AI" else "AI Smart Routing")
+                    DrawerPlannedItem(Icons.Default.SystemUpdate, if (language == AppLanguage.PERSIAN) "به‌روزرسانی هسته‌ها" else "Core Updates")
                     Spacer(Modifier.height(20.dp))
                     Text("PREMIUM • PRIVATE • SECURE", color = Color(0xFF3ABFB9), fontSize = 10.sp, letterSpacing = 1.sp)
                 }
@@ -334,7 +279,8 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                                 when (selectedTab) {
                                     1 -> if (language == AppLanguage.PERSIAN) "سرورها" else "Servers"
                                     2 -> if (language == AppLanguage.PERSIAN) "امنیت" else "Security"
-                                    else -> "MolidoVPN"
+                                    3 -> if (language == AppLanguage.PERSIAN) "مرکز امکانات" else "Feature Center"
+                                    else -> "MolidoVPN AI"
                                 },
                                 fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color.White
                             )
@@ -370,9 +316,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     )
                     1 -> ServersTab(
                         strings = strings, servers = servers, isFetching = isFetchingCommunity,
-                        isPinging = isPinging,
                         onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
-                        onPingAll = { viewModel.pingAllServers() },
                         onSelectServer = { viewModel.selectServer(it) },
                         onImportClipboard = {
                             val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -381,6 +325,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                             else Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
                         }
                     )
+                    3 -> DashboardFeatureCenter(language = language)
                     2 -> SecuritySettingsTab(
                         strings = strings, currentLanguage = language,
                         onSelectLanguage = { viewModel.setLanguage(it) },
@@ -392,13 +337,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         selectedDns = selectedDns, onSelectDns = { viewModel.setDnsProvider(it) },
                         splitApps = splitApps, installedApps = installedApps,
                         onToggleApp = { viewModel.toggleAppExclusion(it) },
-                        activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) },
-                        isScanningCleanIps = isScanningCleanIps,
-                        cleanIps = cleanIps,
-                        onScanCleanIps = { viewModel.scanCleanIps() },
-                        onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) },
-                        isCheckingUpdate = isCheckingUpdate,
-                        onCheckUpdate = { viewModel.checkForUpdates(silent = false) }
+                        activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) }
                     )
                 }
             }
@@ -478,8 +417,8 @@ fun ConnectTab(
                 DashboardMetricCard(
                     modifier = Modifier.weight(1f),
                     title = if (strings.appName == "MolidoVPN") "IP خروجی" else "EXIT IP",
-                    value = "—",
-                    detail = if (isVerified) "در انتظار بررسی IP" else "پس از اتصال تأییدشده",
+                    value = diagnostics.egressIp ?: "—",
+                    detail = if (diagnostics.egressIp != null) "HTTPS egress verified" else if (isVerified) "IP هنوز تأیید نشده" else "پس از اتصال تأییدشده",
                     icon = Icons.Default.Security
                 )
                 DashboardMetricCard(
@@ -627,13 +566,7 @@ fun SmartAutoEngineSelector(
             FilterChip(
                 selected = selectedEngine == "warp",
                 onClick = { onSelect("warp") },
-                label = { Text("WARP") },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = selectedEngine == "hysteria2",
-                onClick = { onSelect("hysteria2") },
-                label = { Text("Hysteria 2") },
+                label = { Text("WARP (Free)") },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
@@ -669,9 +602,7 @@ fun ServersTab(
     strings: AppStrings,
     servers: List<ServerItem>,
     isFetching: Boolean,
-    isPinging: Boolean,
     onUpdateFromGithub: () -> Unit,
-    onPingAll: () -> Unit,
     onSelectServer: (ServerItem) -> Unit,
     onImportClipboard: () -> Unit
 ) {
@@ -682,54 +613,37 @@ fun ServersTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Update from GitHub community button
+                Button(
+                    onClick = onUpdateFromGithub,
+                    enabled = !isFetching,
+                    modifier = Modifier.weight(1.3f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
                 ) {
-                    // Update from GitHub community button
-                    Button(
-                        onClick = onUpdateFromGithub,
-                        enabled = !isFetching,
-                        modifier = Modifier.weight(1.2f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
-                    ) {
-                        if (isFetching) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.updatingGithub, fontSize = 11.sp)
-                        } else {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.updateFromGithub, fontSize = 12.sp)
-                        }
+                    if (isFetching) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.updatingGithub, fontSize = 11.sp)
+                    } else {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.updateFromGithub, fontSize = 12.sp)
                     }
+                }
 
-                    // Batch Ping Button
-                    OutlinedButton(
-                        onClick = onPingAll,
-                        enabled = !isPinging,
-                        modifier = Modifier.weight(1.1f)
-                    ) {
-                        if (isPinging) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF38BDF8), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.pingingStatus, fontSize = 11.sp)
-                        } else {
-                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(strings.pingAllButton, fontSize = 12.sp)
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = onImportClipboard,
-                        modifier = Modifier.weight(0.9f)
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(strings.clipboardButton, fontSize = 12.sp)
-                    }
+                OutlinedButton(
+                    onClick = onImportClipboard,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(strings.clipboardButton, fontSize = 12.sp)
                 }
             }
         }
@@ -743,19 +657,6 @@ fun ServersTab(
         }
 
         items(servers) { server ->
-            val latency = server.measurement.latencyMillis
-            val latencyColor = when {
-                !server.measurement.reachable || latency == null -> Color(0xFFEF4444)
-                latency < 80 -> Color(0xFF10B981)
-                latency < 180 -> Color(0xFFF59E0B)
-                else -> Color(0xFFF97316)
-            }
-            val latencyText = if (!server.measurement.reachable || latency == null) {
-                "قطع / Timeout"
-            } else {
-                "$latency ms"
-            }
-
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -786,19 +687,11 @@ fun ServersTab(
                                     Text("FREE", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                 }
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "${server.engineId.uppercase()} • ",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF94A3B8)
-                                )
-                                Text(
-                                    latencyText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = latencyColor,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            Text(
+                                "${server.engineId.uppercase()} • ${server.measurement.latencyMillis} ms",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
                         }
                     }
 
@@ -835,13 +728,7 @@ fun SecuritySettingsTab(
     installedApps: List<com.molido.vpn.policy.AppInfo>,
     onToggleApp: (String) -> Unit,
     activeConfigText: String,
-    onUpdateConfig: (String) -> Unit,
-    isScanningCleanIps: Boolean,
-    cleanIps: List<com.molido.vpn.engine.warp.CleanIpResult>,
-    onScanCleanIps: () -> Unit,
-    onApplyCleanIp: (String) -> Unit,
-    isCheckingUpdate: Boolean,
-    onCheckUpdate: () -> Unit
+    onUpdateConfig: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -956,66 +843,6 @@ fun SecuritySettingsTab(
             }
         }
 
-        // Cloudflare Clean IP Scanner Section
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.cleanIpTitle, fontWeight = FontWeight.Bold)
-                    Text(strings.cleanIpDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = onScanCleanIps,
-                        enabled = !isScanningCleanIps,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
-                    ) {
-                        if (isScanningCleanIps) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                            Spacer(Modifier.width(8.dp))
-                            Text(strings.cleanIpScanning, fontSize = 12.sp)
-                        } else {
-                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(strings.cleanIpAction, fontSize = 13.sp)
-                        }
-                    }
-
-                    if (cleanIps.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            if (currentLanguage == AppLanguage.PERSIAN) "آی‌پی‌های تمیز با کمترین پینگ:" else "Discovered Clean Endpoints:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF38BDF8),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        for (clean in cleanIps.take(4)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(clean.ip, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("${clean.latencyMillis} ms", fontSize = 11.sp, color = Color(0xFF10B981), fontWeight = FontWeight.Bold)
-                                }
-                                TextButton(onClick = { onApplyCleanIp(clean.ip) }) {
-                                    Text(strings.cleanIpApply, fontSize = 12.sp, color = Color(0xFF38BDF8))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Split Tunneling Section
         item {
             Card(
@@ -1028,43 +855,6 @@ fun SecuritySettingsTab(
                     Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                     Spacer(Modifier.height(8.dp))
                     Text("${splitApps.size} apps bypassed", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                }
-            }
-        }
-
-        // App Version & Updates Section
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(strings.updateTitle, fontWeight = FontWeight.Bold)
-                            Text("${strings.currentVersionLabel}: v${UpdateManager.CURRENT_VERSION}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF38BDF8))
-                        }
-                        Button(
-                            onClick = onCheckUpdate,
-                            enabled = !isCheckingUpdate,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
-                        ) {
-                            if (isCheckingUpdate) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.updateChecking, fontSize = 11.sp)
-                            } else {
-                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.updateCheckAction, fontSize = 12.sp)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1260,5 +1050,64 @@ fun DiagnosticItem(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
         Spacer(modifier = Modifier.height(2.dp))
         Text(value, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+
+private data class DashboardFeature(
+    val number: String,
+    val titleFa: String,
+    val titleEn: String,
+    val descriptionFa: String,
+    val descriptionEn: String,
+    val statusFa: String,
+    val statusEn: String
+)
+
+@Composable
+private fun DashboardFeatureCenter(language: AppLanguage) {
+    val persian = language == AppLanguage.PERSIAN
+    val features = listOf(
+        DashboardFeature("01", "حلقه اتصال هوشمند", "Smart Connection Ring", "وضعیت اتصال فقط پس از تأیید ترافیک واقعی معتبر است.", "Connection is valid only after real traffic verification.", "رابط آماده؛ موتور WireGuard هنوز یکپارچه نشده.", "UI ready; WireGuard backend integration pending."),
+        DashboardFeature("02", "IP و موقعیت خروجی", "Exit IP & Location", "IP از پاسخ HTTPS خروجی گرفته می‌شود؛ مکان نیازمند منبع معتبر است.", "IP comes from HTTPS egress; geolocation needs a trusted provider.", "IP verifier در حال اتصال؛ مکان در انتظار.", "IP verifier integration in progress; location pending."),
+        DashboardFeature("03", "مانیتور زنده شبکه", "Live Network Monitor", "تأخیر و شمارنده ترافیک؛ packet loss و throughput نیازمند probe واقعی‌اند.", "Latency and traffic counters; packet loss and throughput need real probes.", "جزئی؛ اندازه‌گیری کامل باقی است.", "Partial; full measurement pending."),
+        DashboardFeature("04", "مرکز امنیت", "Security Center", "تنظیم DNS و Kill Switch موجود است؛ آزمون نشت DNS و IPv6 باقی است.", "DNS and Kill Switch settings exist; DNS and IPv6 leak tests remain.", "تنظیمات موجود؛ آزمون دستگاه لازم است.", "Settings exist; device tests required."),
+        DashboardFeature("05", "مسیریابی هوشمند", "AI Smart Routing", "انتخاب خودکار فقط از مسیرهای دارای اندازه‌گیری واقعی مجاز است.", "Automatic selection is limited to routes with real measurements.", "تا ثبت اندازه‌گیری واقعی غیرفعال.", "Disabled until real measurements exist."),
+        DashboardFeature("06", "مدیریت موتورهای VPN", "VPN Engine Manager", "کاتالوگ و Adapterها نیازمند GoBackend و ادغام موتورهای واقعی‌اند.", "Catalog and adapters need GoBackend and real engine integrations.", "در حال توسعه؛ هیچ موتور تأیید دستگاه نیست.", "In development; no engine is device-verified."),
+        DashboardFeature("07", "تاریخچه اتصال", "Connection History", "ثبت امن رخدادها، مدت اتصال و علت قطع؛ بدون ذخیره کلیدها.", "Secure event history, duration and disconnect causes; never store keys.", "در انتظار پیاده‌سازی.", "Implementation pending."),
+        DashboardFeature("08", "به‌روزرسانی هسته‌ها", "Core Updates", "بررسی امضا، نسخه، ABI، ضد rollback و بازیابی نسخه قبلی.", "Signature, version, ABI, anti-rollback and recovery checks.", "در انتظار پیاده‌سازی.", "Implementation pending."),
+        DashboardFeature("09", "دستیار AI عیب‌یابی", "AI Diagnostics", "تحلیل خطا و پیشنهاد اصلاح؛ اقدامات حساس با تأیید کاربر.", "Error analysis and remediation; sensitive actions require approval.", "در انتظار موتور تحلیل و داده واقعی.", "AI engine and real telemetry pending."),
+        DashboardFeature("10", "شخصی‌سازی", "Personalization", "زبان و تنظیمات پایه موجود است؛ تم و اعلان‌ها نیازمند تکمیل‌اند.", "Language and basic settings exist; themes and notifications need completion.", "جزئی؛ توسعه ادامه دارد.", "Partial; further work required.")
+    )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Column(Modifier.padding(top = 14.dp, bottom = 4.dp)) {
+                Text(if (persian) "مرکز کنترل MolidoVPN AI" else "MolidoVPN AI Feature Center", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(if (persian) "وضعیت واقعی هر ده قابلیت؛ موارد تأییدنشده فعال نمایش داده نمی‌شوند." else "Readiness for all ten features; unverified capabilities are never shown as active.", color = Color(0xFF86A5AA), fontSize = 12.sp)
+            }
+        }
+        items(features) { feature ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(feature.number, color = Color(0xFF35D6CD), fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(if (persian) feature.titleFa else feature.titleEn, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(if (persian) "در حال تکمیل" else "IN PROGRESS", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(if (persian) feature.descriptionFa else feature.descriptionEn, color = Color(0xFF9BB5B9), fontSize = 11.sp)
+                    Text(if (persian) feature.statusFa else feature.statusEn, color = Color(0xFF45CFC7), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+        item { Spacer(Modifier.height(20.dp)) }
     }
 }
