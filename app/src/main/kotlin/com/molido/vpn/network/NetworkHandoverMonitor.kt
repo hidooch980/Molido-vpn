@@ -23,6 +23,7 @@ class NetworkHandoverMonitor(
     private val lock = Any()
     private val usableNetworks = LinkedHashMap<Network, Pair<Boolean, Boolean>>()
     private var lastPublished: Pair<Boolean, Boolean>? = null
+    private var lastPublishedNetwork: Network? = null
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
@@ -63,8 +64,10 @@ class NetworkHandoverMonitor(
             val hadUsableNetwork = usableNetworks.isNotEmpty()
             if (snapshot == null) usableNetworks.remove(network)
             else usableNetworks[network] = snapshot
-            val selected = usableNetworks.values.lastOrNull()
-            val changed = selected != lastPublished
+            val selectedNetwork = usableNetworks.keys.lastOrNull()
+            val selected = selectedNetwork?.let { usableNetworks[it] }
+            val changed = selectedNetwork != lastPublishedNetwork || selected != lastPublished
+            lastPublishedNetwork = selectedNetwork
             lastPublished = selected
             Triple(selected, changed, hadUsableNetwork && selected == null && changed)
         }
@@ -86,6 +89,7 @@ class NetworkHandoverMonitor(
         synchronized(lock) {
             usableNetworks.clear()
             lastPublished = null
+            lastPublishedNetwork = null
         }
     }
 }
