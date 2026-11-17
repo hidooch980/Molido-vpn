@@ -67,6 +67,19 @@ class WireGuardEngineAdapterTest {
     }
 
     @Test
+    fun failedCloseCanBeRetriedWithoutLosingSessionOwnership() {
+        val adapter = WireGuardEngineAdapter()
+        val tunnel = object : com.wireguard.android.backend.Tunnel {
+            override fun getName(): String = "retry-test"
+            override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
+        }
+        val session = adapter.WireGuardSession(tunnel, java.util.concurrent.atomic.AtomicBoolean(true))
+        assertTrue(session.beginClose())
+        session.allowCloseRetry()
+        assertTrue("A failed backend shutdown must allow another close attempt", session.beginClose())
+    }
+
+    @Test
     fun connectWithoutAndroidContextFailsClosed() = runBlocking {
         val adapter = WireGuardEngineAdapter()
         val events = mutableListOf<EngineEvent>()

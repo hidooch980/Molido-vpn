@@ -130,10 +130,17 @@ class WireGuardEngineAdapter(
 
     override suspend fun disconnect(session: EngineSession) {
         if (session !is WireGuardSession || !session.beginClose()) return
-        withContext(Dispatchers.IO) {
-            if (backend.getState(session.tunnel) == State.UP) {
-                backend.setState(session.tunnel, State.DOWN, null)
+        try {
+            withContext(Dispatchers.IO) {
+                if (backend.getState(session.tunnel) == State.UP) {
+                    backend.setState(session.tunnel, State.DOWN, null)
+                }
+                check(backend.getState(session.tunnel) == State.DOWN) { "WIREGUARD_BACKEND_STILL_UP" }
             }
+        } catch (error: Throwable) {
+            // Allow the coordinator's retained session to retry a failed backend teardown.
+            session.allowCloseRetry()
+            throw error
         }
     }
 
@@ -145,6 +152,9 @@ class WireGuardEngineAdapter(
         private val closing = AtomicBoolean(false)
 
         internal fun beginClose(): Boolean = closing.compareAndSet(false, true)
+        internal fun allowCloseRetry() {
+            closing.compareAndSet(true, false)
+        }
         val isActive: Boolean get() = backendActive.get() && !closing.get()
     }
 }
