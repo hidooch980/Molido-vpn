@@ -159,7 +159,7 @@ class EncryptedConfigStore(context: Context) {
     @Synchronized
     fun saveDisabledSubscriptions(urls: Set<String>) {
         val normalized = urls.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-        val encrypted = encryptText(normalized.joinToString("\\n"), DISABLED_SUBSCRIPTIONS_AAD)
+        val encrypted = encryptText(normalized.joinToString("\n"), DISABLED_SUBSCRIPTIONS_AAD)
         check(prefs.edit().putString(KEY_DISABLED_SUBSCRIPTIONS_ENCRYPTED, encrypted).commit()) {
             "SUBSCRIPTION_STORAGE_FAILED"
         }
