@@ -23,15 +23,15 @@ object DohDnsResolver {
         DnsProvider(
             id = "cloudflare",
             name = "Cloudflare DNS",
-            description = "Cloudflare public DNS servers; this is not DNS-over-HTTPS.",
+            description = "DoH for app-owned lookups; system-wide DNS interception is not enabled.",
             primaryIp = "1.1.1.1",
             secondaryIp = "1.0.0.1",
-            dohEndpoint = "https://1.1.1.1/dns-query"
+            dohEndpoint = "https://cloudflare-dns.com/dns-query"
         ),
         DnsProvider(
             id = "google",
             name = "Google Public DNS",
-            description = "Google public DNS servers; this is not DNS-over-HTTPS.",
+            description = "DoH for app-owned lookups; system-wide DNS interception is not enabled.",
             primaryIp = "8.8.8.8",
             secondaryIp = "8.8.4.4",
             dohEndpoint = "https://dns.google/dns-query"
@@ -39,7 +39,7 @@ object DohDnsResolver {
         DnsProvider(
             id = "quad9",
             name = "Quad9 DNS",
-            description = "Quad9 public DNS servers; filtering depends on provider policy.",
+            description = "Quad9 DoH for app-owned lookups; system-wide DNS interception is not enabled.",
             primaryIp = "9.9.9.9",
             secondaryIp = "149.112.112.112",
             dohEndpoint = "https://dns.quad9.net/dns-query"
@@ -50,7 +50,7 @@ object DohDnsResolver {
             description = "AdGuard public DNS servers; filtering depends on provider policy.",
             primaryIp = "94.140.14.14",
             secondaryIp = "94.140.15.15",
-            dohEndpoint = "https://dns.adguard.com/dns-query"
+            dohEndpoint = "https://dns.adguard-dns.com/dns-query"
         )
     )
 
