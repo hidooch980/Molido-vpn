@@ -22,7 +22,7 @@ data class UpdateInfo(
 )
 
 object UpdateManager {
-    const val CURRENT_VERSION = "1.0.0"
+    const val CURRENT_VERSION = "5.0.0"
     const val GITHUB_REPO_OWNER = "hidooch980"
     const val GITHUB_REPO_NAME = "Molido-vpn"
     const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
