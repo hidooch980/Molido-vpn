@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WireGuardEngineAdapterTest {
-
     private val validConfig = """
         [Interface]
         PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
@@ -47,20 +46,22 @@ class WireGuardEngineAdapterTest {
     }
 
     @Test
-    fun connectEmitsTransportReadyAndReturnsSession() = runBlocking {
+    fun connectWithoutAndroidContextFailsClosed() = runBlocking {
         val adapter = WireGuardEngineAdapter()
         val events = mutableListOf<EngineEvent>()
+        var failed = false
+        try {
+            adapter.connect(
+                configuration = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)),
+                protectSocket = { true },
+                onEvent = { events.add(it) }
+            )
+        } catch (error: IllegalStateException) {
+            failed = error.message == "ANDROID_CONTEXT_REQUIRED"
+        }
 
-        val session = adapter.connect(
-            configuration = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)),
-            protectSocket = { true },
-            onEvent = { events.add(it) }
-        )
-
-        assertEquals("wireguard", session.engineId)
+        assertTrue("Android context is required before native backend startup", failed)
         assertEquals(1, events.size)
-        assertTrue(events[0] is EngineEvent.TransportReady)
-
-        adapter.disconnect(session)
+        assertTrue(events.single() is EngineEvent.Failed)
     }
 }
