@@ -13,7 +13,7 @@ This file is a release-control record, not a claim that the product is complete.
 - Android CI included unit tests, lint, instrumentation-test source compilation (no APK), and dependency review.
 - The branch was observed 0 commits behind `main`, 234 commits ahead, and GitHub reported it mergeable.
 - This documentation update changes the candidate commit. CI and CodeQL must run again on the resulting new head before any merge decision.
-- Repository visibility was still **public** at the last check. The historic signing-key exposure remains unresolved.
+- Repository visibility is intentionally **public**, per the owner's latest explicit decision. The historic signing-key exposure remains unresolved; public history still exposes the historical signing material.
 - No APK was assembled, installed, uploaded, or distributed.
 
 ## Verified repository-side work
@@ -35,19 +35,19 @@ Required evidence includes GoBackend handshake, one TUN owner, protected transpo
 
 CI, unit tests, source compilation, and a backend UP state do not replace these tests. An empty DNS observation is inconclusive. App-process DNS observations do not prove system-wide DNS interception.
 
-### 2. Signing key exposure and repository visibility
+### 2. Signing key exposure and public repository
 
-The repository was observed as public on 2026-11-17. The prior release keystore and signing credentials appeared in public Git history. The old signing key must be treated as compromised.
+The owner explicitly chose to keep this repository **public**. The prior release keystore and signing credentials appeared in public Git history. The old signing key must be treated as compromised and must never sign a new release.
 
-Required owner actions:
-- Change repository visibility to Private in GitHub Settings.
-- Decide and execute a signing-key remediation plan that preserves legitimate update continuity where possible.
-- Verify the authorized release certificate fingerprint using a trusted offline copy.
-- Remove exposed secrets from GitHub Actions secrets and rotate any credentials that were exposed.
-- Do not publish with the exposed key.
+Required remediation:
+- Keep the repository public unless the owner explicitly changes this decision.
+- Verify the authorized replacement signing identity using an owner-held, trusted offline keystore certificate fingerprint. Do not expose keystore bytes, passwords, or private key material.
+- Remove/rotate exposed signing credentials and any other credentials that reused them.
+- Do not generate or substitute a new key without explicit owner authorization.
 - Do not rewrite Git history or force-push until a complete offline backup exists and the owner explicitly approves that destructive history operation.
+- Understand that deleting old Release assets and tags does not erase copies of the exposed key already present in public Git history.
 
-Changing repository visibility does not erase already exposed public history or revoke a copied key.
+Until the signing identity is independently verified and attested, production release remains blocked.
 
 ### 3. Five other VPN engines
 
@@ -82,7 +82,9 @@ GitHub Release metadata and a GitHub download URL are not cryptographic authenti
 - Do not force merge, bypass branch protection, or mark the PR ready based on CI alone.
 - Re-run Android CI and CodeQL on the exact final candidate commit after every code change.
 - Do not create any experimental APK.
-- Build and distribute only the final signed MolidoVPN AI 5.0.0 artifact, after every release gate is reviewed and explicitly approved.
+- The first permitted production release is MolidoVPN AI 5.0.0. Subsequent releases may be 5.x or later; versions below 5.0.0 are forbidden by the release workflow.
+- Build and distribute only a final signed production artifact after every release gate is reviewed and explicitly approved.
+- Existing public Releases/tags below 5.0.0 still require deletion; the connected GitHub tool currently cannot perform those delete operations.
 
 ## Current truthful status
 
