@@ -11,13 +11,13 @@ import org.junit.Test
 class WireGuardEngineAdapterTest {
     private val validConfig = """
         [Interface]
-        PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+        PrivateKey = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
         Address = 10.200.0.2/32
         DNS = 1.1.1.1
         MTU = 1420
 
         [Peer]
-        PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
+        PublicKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
         Endpoint = 198.51.100.1:51820
         AllowedIPs = 0.0.0.0/0
     """.trimIndent()
