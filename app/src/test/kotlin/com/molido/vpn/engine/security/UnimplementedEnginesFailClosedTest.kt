@@ -2,6 +2,7 @@ package com.molido.vpn.engine.security
 
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.EngineEvent
+import com.molido.vpn.engine.ValidationResult
 import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
 import com.molido.vpn.engine.hysteria.Hysteria2EngineAdapter
 import com.molido.vpn.engine.warp.WarpEngineAdapter
@@ -39,6 +40,26 @@ class UnimplementedEnginesFailClosedTest {
     fun warpDoesNotReportTransportReady() = runBlocking {
         assertUnavailable { events ->
             WarpEngineAdapter().connect(configuration, { false }, { event -> events.add(event); Unit })
+        }
+    }
+
+
+    @Test
+    fun warpValidationDoesNotClaimSupportWithoutRuntime() = runBlocking {
+        assertTrue(WarpEngineAdapter().validate(configuration) is ValidationResult.Invalid)
+    }
+
+    @Test
+    fun nonWireGuardAdaptersExposeNoRuntimeCapabilities() {
+        val adapters = listOf(AmneziaWgEngineAdapter(), XrayEngineAdapter(), Hysteria2EngineAdapter(), WarpEngineAdapter())
+        adapters.forEach { adapter ->
+            val capabilities = adapter.capabilities
+            assertTrue(!capabilities.supportsIpv4)
+            assertTrue(!capabilities.supportsIpv6)
+            assertTrue(!capabilities.supportsUdp)
+            assertTrue(!capabilities.supportsDnsControl)
+            assertTrue(!capabilities.supportsPerAppRouting)
+            assertTrue(!capabilities.supportsMtuConfiguration)
         }
     }
 
