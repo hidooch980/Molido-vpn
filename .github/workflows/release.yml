@@ -31,6 +31,11 @@ jobs:
             echo "::error::This source tree is configured for v${APP_VERSION}; refusing tag ${GITHUB_REF_NAME}"
             exit 1
           }
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Release tags must point to a commit already merged into main"
+            exit 1
+          }
 
       - name: Require existing owner signing key
         shell: bash
