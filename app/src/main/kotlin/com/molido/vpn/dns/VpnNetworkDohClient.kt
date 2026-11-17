@@ -80,6 +80,12 @@ class VpnNetworkDohClient(
     }
 }
 
+data class DohProbeObservation(
+    val aQuerySucceeded: Boolean,
+    val aaaaQuerySucceeded: Boolean,
+    val errorCode: String? = null
+)
+
 enum class DnsRecordType(val wireValue: Int) {
     A(1),
     AAAA(28)
