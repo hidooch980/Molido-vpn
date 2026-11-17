@@ -49,9 +49,15 @@ class WireGuardEngineAdapter(
         } catch (_: Exception) {
             return ValidationResult.Invalid("CONFIG_ENCODING_INVALID")
         }
-        val localValidation = WireGuardConfigParser.validate(text)
-        if (localValidation is ValidationResult.Invalid) return localValidation
+        if (configuration.opaquePayload.isEmpty()) {
+            return ValidationResult.Invalid("CONFIG_EMPTY")
+        }
+        if (configuration.opaquePayload.size > 64 * 1024) {
+            return ValidationResult.Invalid("CONFIG_TOO_LARGE")
+        }
         return try {
+            // The upstream parser supports the complete WireGuard format,
+            // including multiple peer sections; the legacy local parser does not.
             Config.parse(StringReader(text))
             ValidationResult.Valid
         } catch (_: Exception) {
