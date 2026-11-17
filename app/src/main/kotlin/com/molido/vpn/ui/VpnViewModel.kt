@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.molido.vpn.BuildConfig
 import com.molido.vpn.data.EncryptedConfigStore
 import com.molido.vpn.data.FreeServerCatalog
 import com.molido.vpn.data.FreeServerProfile
@@ -79,7 +80,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         ),
         // GoBackend creates, owns, and tears down its own TUN. Other engines
         // remain blocked until their own complete transport adapters exist.
-        onVpnInterfaceRequested = { engineId, _ -> engineId == "wireguard" },
+        // Permit internal device acceptance only in debug builds. Release stays fail-closed
+        // until the physical-device acceptance matrix is completed and reviewed.
+        onVpnInterfaceRequested = { engineId, _ -> BuildConfig.DEBUG && engineId == "wireguard" },
         onVpnInterfaceTornDown = { }
     )
 
