@@ -1,8 +1,11 @@
 package com.molido.vpn.data
 
 /**
- * Resolves country only from an explicit country marker in a profile label.
- * It intentionally does not infer geography from IP ranges or server hostnames.
+ * Resolves a country only from an explicit country marker in a human-readable profile label.
+ *
+ * This is display metadata, not geolocation. Hostnames, IP addresses, endpoint regions,
+ * arbitrary two-letter substrings and protocol payloads must never be used to infer a country.
+ * Unknown or ambiguous labels remain ZZ.
  */
 data class ServerCountry(val code: String, val nameFa: String, val nameEn: String, val flag: String)
 
@@ -42,21 +45,43 @@ object ServerCountryClassifier {
         ServerCountry("DK", "دانمارک", "Denmark", "🇩🇰")
     )
 
+    private val aliases = mapOf(
+        "USA" to "US",
+        "UK" to "GB",
+        "UAE" to "AE",
+        "Türkiye" to "TR",
+        "Turkey" to "TR"
+    )
+
     fun resolve(explicitLabel: String?): ServerCountry {
         val label = explicitLabel?.trim().orEmpty()
         if (label.isBlank()) return UNKNOWN
+
+        countries.firstOrNull { label.contains(it.flag) }?.let { return it }
+
         val normalized = label.lowercase()
-        val byFlag = countries.firstOrNull { country -> label.contains(country.flag) }
-        if (byFlag != null) return byFlag
-        val byName = countries.firstOrNull { country ->
-            normalized.contains(country.nameEn.lowercase()) ||
-                normalized.contains(country.nameFa.lowercase())
+        countries.firstOrNull { country ->
+            containsWholeToken(normalized, country.nameEn.lowercase()) ||
+                containsWholeToken(normalized, country.nameFa)
+        }?.let { return it }
+
+        aliases.entries.firstOrNull { (alias, _) ->
+            containsWholeToken(normalized, alias.lowercase())
+        }?.value?.let { code ->
+            countries.firstOrNull { it.code == code }?.let { return it }
         }
-        if (byName != null) return byName
-        val code = Regex("(?:^|[^A-Z])([A-Z]{2})(?:$|[^A-Z])")
+
+        // Accept only uppercase, standalone ISO-like markers in a label, e.g. "Node US-01".
+        // Lowercase hostname fragments and arbitrary two-letter pieces are deliberately ignored.
+        val code = Regex("(?<![A-Za-z])([A-Z]{2})(?![A-Za-z])")
             .find(label)?.groupValues?.getOrNull(1)
-        val normalizedCode = if (code == "UK") "GB" else code
-        return countries.firstOrNull { it.code == normalizedCode } ?: UNKNOWN
+        return countries.firstOrNull { it.code == code } ?: UNKNOWN
+    }
+
+    private fun containsWholeToken(value: String, token: String): Boolean {
+        if (token.isBlank()) return false
+        val pattern = Regex("(?<![\\p{L}\\p{N}])${Regex.escape(token)}(?![\\p{L}\\p{N}])")
+        return pattern.containsMatchIn(value)
     }
 
     fun displayName(country: ServerCountry, persian: Boolean): String =
