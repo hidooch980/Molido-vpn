@@ -1114,7 +1114,8 @@ fun StatusCard(
             val isConnected = connectionState is ConnectionState.Connected
             val isBusy = connectionState is ConnectionState.Preparing ||
                 connectionState is ConnectionState.Connecting ||
-                connectionState is ConnectionState.Verifying
+                connectionState is ConnectionState.Verifying ||
+                connectionState is ConnectionState.Recovering
 
             val buttonColor = when {
                 isConnected -> Color(0xFFEF4444)
