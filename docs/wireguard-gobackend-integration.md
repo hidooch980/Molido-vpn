@@ -6,7 +6,7 @@
 - Runtime: official `GoBackend` / `wireguard-go` userspace implementation.
 - TUN ownership: `GoBackend.VpnService` is the only VPN service declared by the app manifest for the WireGuard path. The previous app-owned bare-TUN service is no longer declared or started by the ViewModel.
 - Socket protection: the upstream GoBackend protects its native IPv4 and IPv6 UDP sockets through its own VPN service. The generic adapter socket-protection callback is not used by GoBackend; the coordinator now fails closed for adapters that rely on that callback.
-- State: backend activation emits `TransportReady` only after `GoBackend.setState(UP)` returns and reports `UP`. This is not considered a verified internet connection; the coordinator must still pass the HTTPS egress verifier.
+- State: backend activation emits `TransportReady` only after `GoBackend.setState(UP)` returns and reports `UP`. Unexpected backend DOWN after startup emits a recoverable failure. The coordinator tears down first, then retries the last validated profile up to three times with bounded backoff; manual disconnect cancels recovery. This is not considered a verified internet connection; the coordinator must still pass the HTTPS egress verifier.
 - Validation: the app's bounded config validation is followed by the upstream WireGuard parser before activation.
 - WireGuard startup is enabled only in debug builds for internal device acceptance. Release builds fail closed until the full physical-device acceptance matrix is completed and reviewed.
 - Non-WireGuard engines remain blocked at the TUN gate until they have complete packet-forwarding backends.
@@ -14,7 +14,7 @@
 ## Important boundaries
 
 - A backend state of UP proves that the userspace tunnel was activated, not that the peer completed a handshake or that the internet is reachable.
-- A successful HTTPS egress probe must traverse Android's active VPN Network. The RFC 8484 client binds app-owned DNS requests to that VPN Network; Android system UDP/53 traffic is not intercepted or converted to DoH. An independent diagnostic runner probes IPv4-only/IPv6-only egress and observes system DNS resolvers through a random bash.ws test query. These diagnostics still require physical-device validation and do not by themselves certify no leaks.
+- A successful HTTPS egress probe must traverse Android's active VPN Network. Validated physical-network handovers trigger a fresh egress probe; transient failure causes bounded teardown/reconnect and a new verification before Connected is shown. The RFC 8484 client binds app-owned DNS requests to that VPN Network; Android system UDP/53 traffic is not intercepted or converted to DoH. An independent diagnostic runner probes IPv4-only/IPv6-only egress and observes system DNS resolvers through a random bash.ws test query. These diagnostics still require physical-device validation and do not by themselves certify no leaks.
 - The Quick Settings tile is intentionally not declared while it still targets the removed legacy service. It must be reimplemented against the shared tunnel controller before being re-enabled.
 - No physical-device acceptance has been performed in this integration change.
 
