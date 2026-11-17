@@ -68,7 +68,7 @@ class ConnectionCoordinator(
                 val interfaceReady = try {
                     onVpnInterfaceRequested(engineId, configuration)
                 } catch (e: Exception) {
-                    dispatch(ConnectionEvent.Fail("TUN interface setup failed: ${e.message}"))
+                    dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
                     return@withLock
                 }
 
@@ -88,7 +88,7 @@ class ConnectionCoordinator(
                     currentSession = session
                 } catch (e: Exception) {
                     cleanupSession()
-                    dispatch(ConnectionEvent.Fail("Engine connection failed: ${e.message}"))
+                    dispatch(ConnectionEvent.Fail("ENGINE_CONNECTION_FAILED"))
                 }
             }
         }
