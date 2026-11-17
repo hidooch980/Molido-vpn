@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -222,6 +223,15 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
      * Performs an app-owned DNS-over-HTTPS lookup over the active VPN Network.
      * Android system DNS traffic is not intercepted by this helper.
      */
+    private suspend fun probeDoH(recordType: DnsRecordType): Boolean = try {
+        resolveDnsOverHttps("example.com", recordType)
+        true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
     suspend fun resolveDnsOverHttps(
         hostname: String,
         recordType: DnsRecordType = DnsRecordType.A
@@ -246,12 +256,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 _dnsResolverObservation.value = independentLeakTestRunner.observeSystemDnsResolvers()
-                val aSucceeded = runCatching {
-                    resolveDnsOverHttps("example.com", DnsRecordType.A)
-                }.isSuccess
-                val aaaaSucceeded = runCatching {
-                    resolveDnsOverHttps("example.com", DnsRecordType.AAAA)
-                }.isSuccess
+                val aSucceeded = probeDoH(DnsRecordType.A)
+                val aaaaSucceeded = probeDoH(DnsRecordType.AAAA)
                 _dohProbeObservation.value = DohProbeObservation(
                     aQuerySucceeded = aSucceeded,
                     aaaaQuerySucceeded = aaaaSucceeded,
