@@ -234,7 +234,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                     SubscriptionManager.validateSubscriptionUrl(rawUrl).toExternalForm()
                 }
                 val updated = (_subscriptionUrls.value + normalized).distinct()
-                configStore.saveSubscriptions(updated)
+                withContext(Dispatchers.IO) { configStore.saveSubscriptions(updated) }
                 _subscriptionUrls.value = updated
                 _effects.emit(VpnUiEffect.ShowToast(
                     if (_language.value == AppLanguage.PERSIAN) "اشتراک با موفقیت ذخیره شد" else "Subscription saved"
@@ -249,9 +249,19 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeSubscription(url: String) {
-        val updated = _subscriptionUrls.value.filterNot { it == url }
-        configStore.saveSubscriptions(updated)
-        _subscriptionUrls.value = updated
+        viewModelScope.launch {
+            try {
+                val updated = _subscriptionUrls.value.filterNot { it == url }
+                withContext(Dispatchers.IO) { configStore.saveSubscriptions(updated) }
+                _subscriptionUrls.value = updated
+            } catch (error: Exception) {
+                val detail = error.message ?: "storage error"
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "حذف اشتراک ذخیره نشد: $detail"
+                    else "Could not save subscription removal: $detail"
+                ))
+            }
+        }
     }
 
     fun refreshSubscriptionsNow() {
