@@ -239,3 +239,45 @@ object WireGuardConfigParser {
         }
     }
 }
+
+
+/** Full-tunnel route guard and resolver override for the GoBackend profile. */
+object WireGuardTunnelPolicy {
+    fun validateFullTunnel(rawText: String): String? {
+        val allowedIps = Regex("(?im)^\\s*AllowedIPs\\s*=\\s*([^\\r\\n]+)")
+            .findAll(rawText)
+            .flatMap { it.groupValues[1].split(',').asSequence() }
+            .map { it.trim() }
+            .toSet()
+        if ("0.0.0.0/0" !in allowedIps) return "IPV4_DEFAULT_ROUTE_REQUIRED"
+        if ("::/0" !in allowedIps) return "IPV6_DEFAULT_ROUTE_REQUIRED"
+        return null
+    }
+
+    fun applyDnsServers(rawText: String, dnsServers: List<String>): String {
+        if (dnsServers.isEmpty()) return rawText
+        require(dnsServers.size in 1..4 && dnsServers.all(::isIpv4Literal)) { "DNS_OVERRIDE_INVALID" }
+        val lines = rawText.lines().toMutableList()
+        val interfaceIndex = lines.indexOfFirst { it.trim().equals("[Interface]", ignoreCase = true) }
+        require(interfaceIndex >= 0) { "WIREGUARD_INTERFACE_MISSING" }
+        val peerIndex = lines.indexOfFirst { it.trim().equals("[Peer]", ignoreCase = true) }
+            .let { if (it < 0) lines.size else it }
+        require(peerIndex > interfaceIndex) { "WIREGUARD_PEER_MISSING" }
+        val dnsLine = "DNS = " + dnsServers.distinct().joinToString(", ")
+        val existingDnsIndex = (interfaceIndex + 1 until peerIndex).firstOrNull { index ->
+            val line = lines[index].substringBefore('#').trim()
+            line.substringBefore('=').trim().equals("DNS", ignoreCase = true)
+        }
+        if (existingDnsIndex != null) lines[existingDnsIndex] = dnsLine
+        else lines.add(interfaceIndex + 1, dnsLine)
+        return lines.joinToString("\\n")
+    }
+
+    private fun isIpv4Literal(value: String): Boolean {
+        val parts = value.split('.')
+        return parts.size == 4 && parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 && part.all(Char::isDigit) &&
+                part.toIntOrNull()?.let { it in 0..255 } == true
+        }
+    }
+}

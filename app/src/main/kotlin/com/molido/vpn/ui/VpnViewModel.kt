@@ -193,8 +193,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setDnsProvider(providerId: String) {
-        _selectedDns.value = providerId
-        configStore.saveSelectedDns(providerId)
+        val provider = runCatching { DohDnsResolver.getProvider(providerId) }.getOrNull() ?: return
+        _selectedDns.value = provider.id
+        configStore.saveSelectedDns(provider.id)
     }
 
     fun toggleAppExclusion(packageName: String) {
@@ -383,7 +384,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val config = EngineConfiguration(payload.toByteArray(Charsets.UTF_8))
+        val dnsProvider = DohDnsResolver.getProvider(_selectedDns.value)
+        val config = EngineConfiguration(
+            opaquePayload = payload.toByteArray(Charsets.UTF_8),
+            dnsServers = listOf(dnsProvider.primaryIp, dnsProvider.secondaryIp)
+        )
         if (coordinator.getAdapter(engine) == null) {
             viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("موتور نامعتبر: $engine")) }
             return

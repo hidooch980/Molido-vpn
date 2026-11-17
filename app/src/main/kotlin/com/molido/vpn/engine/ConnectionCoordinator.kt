@@ -77,6 +77,7 @@ class ConnectionCoordinator(
                 val expected = pendingConfiguration ?: return@withLock
                 if (expected.allowIpv4 != configuration.allowIpv4 ||
                     expected.allowIpv6 != configuration.allowIpv6 ||
+                    expected.dnsServers != configuration.dnsServers ||
                     !expected.opaquePayload.contentEquals(configuration.opaquePayload)
                 ) return@withLock
                 val adapter = adapters[engineId]

@@ -19,7 +19,7 @@ class WireGuardEngineAdapterTest {
         [Peer]
         PublicKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
         Endpoint = 198.51.100.1:51820
-        AllowedIPs = 0.0.0.0/0
+        AllowedIPs = 0.0.0.0/0, ::/0
     """.trimIndent()
 
     @Test
@@ -43,6 +43,27 @@ class WireGuardEngineAdapterTest {
 
         val invalidResult = adapter.validate(EngineConfiguration("invalid-payload".toByteArray(Charsets.UTF_8)))
         assertTrue(invalidResult is ValidationResult.Invalid)
+    }
+
+    @Test
+    fun adapterRejectsProfilesWithoutIpv6DefaultRoute() = runBlocking {
+        val adapter = WireGuardEngineAdapter()
+        val ipv4Only = validConfig.replace(", ::/0", "")
+        val result = adapter.validate(EngineConfiguration(ipv4Only.toByteArray(Charsets.UTF_8)))
+        assertTrue(result is ValidationResult.Invalid)
+        assertEquals("IPV6_DEFAULT_ROUTE_REQUIRED", (result as ValidationResult.Invalid).reasonCode)
+    }
+
+    @Test
+    fun adapterAcceptsSelectedDnsOverride() = runBlocking {
+        val adapter = WireGuardEngineAdapter()
+        val result = adapter.validate(
+            EngineConfiguration(
+                opaquePayload = validConfig.toByteArray(Charsets.UTF_8),
+                dnsServers = listOf("9.9.9.9", "149.112.112.112")
+            )
+        )
+        assertEquals(ValidationResult.Valid, result)
     }
 
     @Test

@@ -56,12 +56,16 @@ class WireGuardEngineAdapter(
             return ValidationResult.Invalid("CONFIG_TOO_LARGE")
         }
         return try {
+            val effectiveText = WireGuardTunnelPolicy.applyDnsServers(text, configuration.dnsServers)
+            WireGuardTunnelPolicy.validateFullTunnel(effectiveText)?.let {
+                return ValidationResult.Invalid(it)
+            }
             // The upstream parser supports the complete WireGuard format,
             // including multiple peer sections; the legacy local parser does not.
-            Config.parse(StringReader(text).buffered())
+            Config.parse(StringReader(effectiveText).buffered())
             ValidationResult.Valid
-        } catch (_: Exception) {
-            ValidationResult.Invalid("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
+        } catch (error: Exception) {
+            ValidationResult.Invalid(error.message ?: "WIREGUARD_UPSTREAM_CONFIG_REJECTED")
         }
     }
 
@@ -78,8 +82,11 @@ class WireGuardEngineAdapter(
         require(configuration.opaquePayload.isNotEmpty()) { "CONFIG_EMPTY" }
         require(configuration.opaquePayload.size <= 64 * 1024) { "CONFIG_TOO_LARGE" }
         val configText = String(configuration.opaquePayload, Charsets.UTF_8)
+        val effectiveText = WireGuardTunnelPolicy.applyDnsServers(configText, configuration.dnsServers)
+        val routeError = WireGuardTunnelPolicy.validateFullTunnel(effectiveText)
+        require(routeError == null) { routeError ?: "WIREGUARD_FULL_TUNNEL_REQUIRED" }
         val parsed = try {
-            Config.parse(StringReader(configText).buffered())
+            Config.parse(StringReader(effectiveText).buffered())
         } catch (_: Exception) {
             throw IllegalArgumentException("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
         }
