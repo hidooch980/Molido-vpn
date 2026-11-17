@@ -155,9 +155,22 @@ object SubscriptionManager {
 
         override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
         override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
-        override fun createSocket(): Socket = delegate.createSocket()
-        override fun createSocket(socket: Socket, host: String, port: Int, autoClose: Boolean): Socket =
-            delegate.createSocket(socket, host, port, autoClose)
+        // Never expose an unconnected TLS socket: callers could connect it by
+        // hostname and trigger a second, unpinned DNS lookup.
+        override fun createSocket(): Socket =
+            throw IOException("SUBSCRIPTION_UNPINNED_SOCKET_REJECTED")
+
+        override fun createSocket(socket: Socket, host: String, port: Int, autoClose: Boolean): Socket {
+            val remote = socket.remoteSocketAddress as? InetSocketAddress
+            require(
+                host.equals(hostname, ignoreCase = true) &&
+                    port == 443 &&
+                    socket.isConnected &&
+                    remote?.port == 443 &&
+                    remote.address in addresses
+            ) { "SUBSCRIPTION_PIN_MISMATCH" }
+            return delegate.createSocket(socket, hostname, port, autoClose)
+        }
 
         override fun createSocket(host: String, port: Int): Socket =
             connectPinned(hostname, port, null, 0)
