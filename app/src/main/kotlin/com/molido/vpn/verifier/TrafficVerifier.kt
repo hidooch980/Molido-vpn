@@ -74,7 +74,7 @@ class NetworkTrafficVerifier(
                 }
                 output.toString(Charsets.US_ASCII.name()).trim()
             }
-            val address = parsePublicIpLiteral(body)
+            val address = PublicEgressIpValidator.parse(body)
                 ?: return@withContext VerificationResult(false, errorMessage = "INVALID_OR_NON_PUBLIC_EGRESS_IP")
 
             VerificationResult(
@@ -89,7 +89,13 @@ class NetworkTrafficVerifier(
         }
     }
 
-    private fun parsePublicIpLiteral(value: String): InetAddress? {
+    private companion object {
+        const val MAX_EGRESS_BODY_BYTES = 64
+    }
+}
+
+internal object PublicEgressIpValidator {
+    fun parse(value: String): InetAddress? {
         if (value.isBlank() || value.length > 45 || value.any { it.isWhitespace() }) return null
         val looksLikeIpv4 = value.matches(Regex("\\d{1,3}(?:\\.\\d{1,3}){3}"))
         val looksLikeIpv6 = value.contains(':') && value.matches(Regex("[0-9a-fA-F:.]+"))
@@ -127,7 +133,7 @@ class NetworkTrafficVerifier(
             (a == 192 && b == 88 && c == 99)
         return if (isReserved) null else address
     }
-
+}
     private companion object {
         const val MAX_EGRESS_BODY_BYTES = 64
     }
