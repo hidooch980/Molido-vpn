@@ -40,7 +40,10 @@ data class DnsResolverObservation(
 internal object SystemDnsLookup {
     const val LOOKUP_PATH = "ANDROID_PROCESS_DEFAULT_SYSTEM_RESOLVER"
 
-    fun resolve(hostname: String): Array<InetAddress> = InetAddress.getAllByName(hostname)
+    fun resolve(
+        hostname: String,
+        lookup: (String) -> Array<InetAddress> = InetAddress::getAllByName
+    ): Array<InetAddress> = lookup(hostname)
 }
 
 /**
