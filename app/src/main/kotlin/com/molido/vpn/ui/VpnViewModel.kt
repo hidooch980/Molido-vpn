@@ -126,6 +126,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _subscriptionUrls = MutableStateFlow(configStore.getSubscriptions())
     val subscriptionUrls: StateFlow<List<String>> = _subscriptionUrls.asStateFlow()
+    private val _disabledSubscriptionUrls = MutableStateFlow(configStore.getDisabledSubscriptions())
+    val disabledSubscriptionUrls: StateFlow<Set<String>> = _disabledSubscriptionUrls.asStateFlow()
 
     private val _isPinging = MutableStateFlow(false)
     val isPinging: StateFlow<Boolean> = _isPinging.asStateFlow()
@@ -264,6 +266,22 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setSubscriptionEnabled(url: String, enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                val updated = _disabledSubscriptionUrls.value.toMutableSet().apply {
+                    if (enabled) remove(url) else add(url)
+                }
+                withContext(Dispatchers.IO) { configStore.saveDisabledSubscriptions(updated) }
+                _disabledSubscriptionUrls.value = updated
+            } catch (error: Exception) {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "تغییر وضعیت اشتراک ذخیره نشد"
+                    else "Could not save subscription state"
+                ))
+            }
+        }
+    }
     fun refreshSubscriptionsNow() {
         val request = androidx.work.OneTimeWorkRequestBuilder<com.molido.vpn.importer.SubscriptionRefreshWorker>()
             .setConstraints(
