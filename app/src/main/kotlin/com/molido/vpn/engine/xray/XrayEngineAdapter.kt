@@ -38,4 +38,6 @@ class XrayEngineAdapter : EngineAdapter {
         // TUN packet forwarding, and device acceptance tests are integrated.
         throw UnsupportedOperationException("ENGINE_RUNTIME_NOT_IMPLEMENTED")
     }
+
+    override suspend fun disconnect(@Suppress("UNUSED_PARAMETER") session: EngineSession) = Unit
 }
