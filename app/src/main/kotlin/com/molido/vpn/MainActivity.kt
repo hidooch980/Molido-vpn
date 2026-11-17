@@ -113,6 +113,7 @@ import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
 import com.molido.vpn.verifier.AddressFamilyProbe
 import com.molido.vpn.verifier.DnsResolverObservation
+import com.molido.vpn.dns.DohProbeObservation
 import com.molido.vpn.ui.VpnViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -173,6 +174,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val isRunningLeakDiagnostics by viewModel.isRunningLeakDiagnostics.collectAsState()
     val addressFamilyDiagnostics by viewModel.addressFamilyDiagnostics.collectAsState()
     val dnsResolverObservation by viewModel.dnsResolverObservation.collectAsState()
+    val dohProbeObservation by viewModel.dohProbeObservation.collectAsState()
     val splitApps by viewModel.splitApps.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
@@ -358,6 +360,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         isRunningLeakDiagnostics = isRunningLeakDiagnostics,
                         addressFamilyDiagnostics = addressFamilyDiagnostics,
                         dnsResolverObservation = dnsResolverObservation,
+                        dohProbeObservation = dohProbeObservation,
                         onRunLeakDiagnostics = { viewModel.runIndependentLeakDiagnostics() },
                         splitApps = splitApps, installedApps = installedApps,
                         onToggleApp = { viewModel.toggleAppExclusion(it) },
@@ -864,6 +867,7 @@ fun SecuritySettingsTab(
     isRunningLeakDiagnostics: Boolean,
     addressFamilyDiagnostics: List<AddressFamilyProbe>?,
     dnsResolverObservation: DnsResolverObservation?,
+    dohProbeObservation: DohProbeObservation?,
     onRunLeakDiagnostics: () -> Unit,
     splitApps: Set<String>,
     installedApps: List<com.molido.vpn.policy.AppInfo>,
@@ -1020,6 +1024,20 @@ fun SecuritySettingsTab(
                             } else {
                                 if (currentLanguage == AppLanguage.PERSIAN) "اجرای آزمون‌ها" else "Run diagnostics"
                             }
+                        )
+                    }
+                    dohProbeObservation?.let { result ->
+                        Text(
+                            (if (currentLanguage == AppLanguage.PERSIAN) "DoH داخل تونل — A: " else "DoH over VPN — A: ") +
+                                if (result.aQuerySucceeded) "OK" else "FAILED",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.aQuerySucceeded) Color(0xFF34D399) else Color(0xFFFBBF24)
+                        )
+                        Text(
+                            (if (currentLanguage == AppLanguage.PERSIAN) "AAAA: " else "AAAA: ") +
+                                if (result.aaaaQuerySucceeded) "OK" else "FAILED",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.aaaaQuerySucceeded) Color(0xFF34D399) else Color(0xFFFBBF24)
                         )
                     }
                     addressFamilyDiagnostics?.forEach { result ->
