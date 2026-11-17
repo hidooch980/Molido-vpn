@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -38,13 +41,15 @@ class ConnectionCoordinator(
     private var activeAttemptId: Long = 0L
     private var pendingEngineId: String? = null
     private var pendingConfiguration: EngineConfiguration? = null
+    private var lastActiveConfiguration: EngineConfiguration? = null
+    private var recoveryJob: Job? = null
 
     fun getAdapter(engineId: String): EngineAdapter? = adapters[engineId]
 
     fun requestConnect(engineId: String, configuration: EngineConfiguration) {
         scope.launch {
             lifecycleMutex.withLock {
-                if (currentSession != null || (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed)) return@withLock
+                if (currentSession != null || (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed && _state.value !is ConnectionState.Recovering)) return@withLock
                 val adapter = adapters[engineId]
                 if (adapter == null) {
                     dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
@@ -112,6 +117,12 @@ class ConnectionCoordinator(
                         protectSocket = { false },
                         onEvent = { event -> handleEngineEvent(engineId, attemptId, event) }
                     )
+                    lastActiveConfiguration = EngineConfiguration(
+                        opaquePayload = configuration.opaquePayload.copyOf(),
+                        allowIpv4 = configuration.allowIpv4,
+                        allowIpv6 = configuration.allowIpv6,
+                        dnsServers = configuration.dnsServers.toList()
+                    )
                 } catch (cancelled: CancellationException) {
                     cleanupSessionLocked()
                     dispatch(ConnectionEvent.Fail("CONNECTION_CANCELLED"))
@@ -144,7 +155,13 @@ class ConnectionCoordinator(
                         if (!cleaned) {
                             dispatch(ConnectionEvent.Fail("TUN_TEARDOWN_FAILED"))
                         } else if (event.recoverable) {
-                            dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
+                            val recoveryConfig = lastActiveConfiguration
+                            if (recoveryConfig == null) {
+                                dispatch(ConnectionEvent.Fail("RECOVERY_CONFIG_UNAVAILABLE"))
+                            } else {
+                                dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
+                                scheduleRecovery(engineId, recoveryConfig)
+                            }
                         } else {
                             dispatch(ConnectionEvent.Fail(event.reasonCode))
                         }
@@ -229,7 +246,34 @@ class ConnectionCoordinator(
         }
     }
 
+    private fun scheduleRecovery(engineId: String, configuration: EngineConfiguration) {
+        recoveryJob?.cancel()
+        recoveryJob = scope.launch {
+            repeat(MAX_RECOVERY_ATTEMPTS) { attempt ->
+                delay(RECOVERY_BACKOFF_MILLIS * (attempt + 1))
+                if (_state.value !is ConnectionState.Recovering && _state.value !is ConnectionState.Failed) return@launch
+
+                requestConnect(engineId, configuration)
+                val prepared = state.first {
+                    it is ConnectionState.Preparing || it is ConnectionState.Connected || it is ConnectionState.Failed
+                }
+                if (prepared is ConnectionState.Connected) return@launch
+                if (prepared !is ConnectionState.Preparing) return@repeat
+
+                onVpnPermissionGranted(engineId, configuration)
+                val result = state.first { it is ConnectionState.Connected || it is ConnectionState.Failed }
+                if (result is ConnectionState.Connected) return@launch
+            }
+            if (_state.value is ConnectionState.Failed) {
+                dispatch(ConnectionEvent.Fail("RECOVERY_EXHAUSTED"))
+            }
+        }
+    }
+
     fun disconnect() {
+        recoveryJob?.cancel()
+        recoveryJob = null
+        lastActiveConfiguration = null
         scope.launch {
             lifecycleMutex.withLock {
                 if (cleanupSessionLocked()) {
@@ -239,6 +283,11 @@ class ConnectionCoordinator(
                 }
             }
         }
+    }
+
+    private companion object {
+        const val MAX_RECOVERY_ATTEMPTS = 3
+        const val RECOVERY_BACKOFF_MILLIS = 750L
     }
 
     private fun dispatch(event: ConnectionEvent) {
