@@ -119,11 +119,15 @@ object SubscriptionManager {
         require(port == 443) { "SUBSCRIPTION_PORT_BLOCKED" }
 
         val literal = host.removePrefix("[").removeSuffix("]")
-        val address = try { InetAddress.getByName(literal) } catch (_: Exception) { null }
-        if (address != null && isNonPublicAddress(address)) {
-            throw IllegalArgumentException("SUBSCRIPTION_HOST_BLOCKED")
-        }
-        if (resolveDns && address == null) {
+        val isIpLiteral = literal.contains(':') ||
+            literal.matches(Regex("\\d{1,3}(?:\\.\\d{1,3}){3}"))
+        if (isIpLiteral) {
+            val address = try { InetAddress.getByName(literal) } catch (_: Exception) {
+                throw IllegalArgumentException("SUBSCRIPTION_HOST_INVALID")
+            }
+            require(!isNonPublicAddress(address)) { "SUBSCRIPTION_HOST_BLOCKED" }
+        } else if (resolveDns) {
+            // Check every A/AAAA answer, not just the first one.
             val resolved = try { InetAddress.getAllByName(host) } catch (_: Exception) {
                 throw IllegalArgumentException("SUBSCRIPTION_DNS_FAILED")
             }
