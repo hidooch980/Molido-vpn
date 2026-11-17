@@ -182,7 +182,8 @@ class ConnectionCoordinator(
             var teardownSucceeded = true
             if (session != null) {
                 try {
-                    adapters[session.engineId]?.disconnect(session)
+                    val adapter = adapters[session.engineId] ?: throw IllegalStateException("SESSION_ADAPTER_MISSING")
+                    adapter.disconnect(session)
                     currentSession = null
                 } catch (_: Exception) {
                     // Retain the session so a later explicit disconnect can retry teardown.
@@ -203,7 +204,6 @@ class ConnectionCoordinator(
             }
             teardownSucceeded
         }
-    }
 
     fun disconnect() {
         scope.launch {
