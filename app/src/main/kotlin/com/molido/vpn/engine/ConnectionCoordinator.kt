@@ -140,7 +140,9 @@ class ConnectionCoordinator(
     private fun cleanupSession() {
         currentSession?.let { session ->
             adapters[session.engineId]?.let { adapter ->
-                scope.launch { adapter.disconnect(session) }
+                scope.launch {
+                    try { adapter.disconnect(session) } catch (_: Exception) { /* cleanup remains fail-closed */ }
+                }
             }
             currentSession = null
         }
