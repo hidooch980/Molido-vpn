@@ -1031,18 +1031,37 @@ fun SecuritySettingsTab(
                         )
                     }
                     dnsResolverObservation?.let { observation ->
-                        Text(
-                            if (observation.evidenceAvailable) {
+                        if (observation.evidenceAvailable) {
+                            Text(
                                 (if (currentLanguage == AppLanguage.PERSIAN) "DNSهای مشاهده‌شده: " else "Observed DNS resolvers: ") +
-                                    observation.resolverAddresses.joinToString()
-                            } else {
+                                    observation.resolverAddresses.joinToString(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFBBF24)
+                            )
+                        } else {
+                            Text(
                                 if (currentLanguage == AppLanguage.PERSIAN)
                                     "نتیجه DNS قطعی نیست: ${observation.errorCode ?: "نامشخص"}"
-                                else "DNS result inconclusive: ${observation.errorCode ?: "unknown"}"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFBBF24)
-                        )
+                                else "DNS result inconclusive: ${observation.errorCode ?: "unknown"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFBBF24)
+                            )
+                        }
+                        observation.publicAddresses.takeIf { it.isNotEmpty() }?.let { addresses ->
+                            Text(
+                                (if (currentLanguage == AppLanguage.PERSIAN) "IP خروجی مشاهده‌شده: " else "Observed egress IP: ") +
+                                    addresses.joinToString(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                        observation.conclusion?.let { conclusion ->
+                            Text(
+                                (if (currentLanguage == AppLanguage.PERSIAN) "نتیجه سرویس آزمون: " else "Test-service conclusion: ") + conclusion,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
                     }
                 }
             }
