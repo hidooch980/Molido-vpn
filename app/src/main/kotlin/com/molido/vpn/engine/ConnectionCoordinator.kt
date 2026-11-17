@@ -42,6 +42,7 @@ class ConnectionCoordinator(
     private var pendingEngineId: String? = null
     private var pendingConfiguration: EngineConfiguration? = null
     private var lastActiveConfiguration: EngineConfiguration? = null
+    private var lastActiveEngineId: String? = null
     private var recoveryJob: Job? = null
 
     fun getAdapter(engineId: String): EngineAdapter? = adapters[engineId]
@@ -117,6 +118,7 @@ class ConnectionCoordinator(
                         protectSocket = { false },
                         onEvent = { event -> handleEngineEvent(engineId, attemptId, event) }
                     )
+                    lastActiveEngineId = engineId
                     lastActiveConfiguration = EngineConfiguration(
                         opaquePayload = configuration.opaquePayload.copyOf(),
                         allowIpv4 = configuration.allowIpv4,
@@ -277,15 +279,11 @@ class ConnectionCoordinator(
                 } else if (session == null &&
                     (_state.value is ConnectionState.Recovering || _state.value is ConnectionState.Failed)
                 ) {
-                    val engineId = lastActiveConfiguration?.let { config ->
-                        adapters.keys.firstOrNull { it == _diagnostics.value.activeEngineId }
-                    }
                     val config = lastActiveConfiguration
-                    if (config != null) {
-                        val recoverEngineId = engineId ?: _state.value.let {
-                            (it as? ConnectionState.Recovering)?.previousEngineId
-                        }
-                        if (recoverEngineId != null) scheduleRecovery(recoverEngineId, config)
+                    val recoverEngineId = lastActiveEngineId
+                        ?: (_state.value as? ConnectionState.Recovering)?.previousEngineId
+                    if (config != null && recoverEngineId != null) {
+                        scheduleRecovery(recoverEngineId, config)
                     }
                 }
             }
@@ -320,6 +318,7 @@ class ConnectionCoordinator(
         recoveryJob?.cancel()
         recoveryJob = null
         lastActiveConfiguration = null
+        lastActiveEngineId = null
         scope.launch {
             lifecycleMutex.withLock {
                 if (cleanupSessionLocked()) {
