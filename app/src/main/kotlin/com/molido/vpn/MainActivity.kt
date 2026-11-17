@@ -473,7 +473,7 @@ fun ConnectTab(
                     Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
                     DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
-                    DashboardSecurityRow("Kill Switch", if (killSwitchEnabled) "تنظیم روشن است؛ آزمون عملکرد لازم است" else "تنظیم خاموش است", needsTest = true)
+                    DashboardSecurityRow("Android Lockdown", if (killSwitchEnabled) "یادآور روشن است؛ وضعیت قفل اندروید تأیید نشده" else "یادآور خاموش است؛ وضعیت قفل اندروید نامشخص", needsTest = true)
                 }
             }
         }
