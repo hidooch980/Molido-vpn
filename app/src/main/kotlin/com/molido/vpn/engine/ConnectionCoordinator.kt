@@ -2,6 +2,8 @@ package com.molido.vpn.engine
 
 import com.molido.vpn.verifier.TrafficVerifier
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,7 @@ class ConnectionCoordinator(
     val diagnostics: StateFlow<ConnectionDiagnostics> = _diagnostics.asStateFlow()
     private val lifecycleMutex = Mutex()
     private var currentSession: EngineSession? = null
+    private var activeAttemptId: Long = 0L
 
     fun getAdapter(engineId: String): EngineAdapter? = adapters[engineId]
 
@@ -72,6 +75,8 @@ class ConnectionCoordinator(
                     dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
                     return@withLock
                 }
+                activeAttemptId += 1L
+                val attemptId = activeAttemptId
                 dispatch(ConnectionEvent.PermissionGranted(engineId))
                 val interfaceReady = try {
                     onVpnInterfaceRequested(engineId, configuration)
@@ -82,6 +87,7 @@ class ConnectionCoordinator(
                     return@withLock
                 }
                 if (!interfaceReady) {
+                    cleanupSessionLocked()
                     dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
                     return@withLock
                 }
@@ -90,7 +96,7 @@ class ConnectionCoordinator(
                         configuration = configuration,
                         // GoBackend protects its native sockets; other adapters are fail-closed.
                         protectSocket = { false },
-                        onEvent = { event -> handleEngineEvent(engineId, event) }
+                        onEvent = { event -> handleEngineEvent(engineId, attemptId, event) }
                     )
                 } catch (cancelled: CancellationException) {
                     cleanupSessionLocked()
@@ -104,10 +110,10 @@ class ConnectionCoordinator(
         }
     }
 
-    private fun handleEngineEvent(engineId: String, event: EngineEvent) {
+    private fun handleEngineEvent(engineId: String, attemptId: Long, event: EngineEvent) {
         scope.launch {
             lifecycleMutex.withLock {
-                if (currentSession?.engineId != engineId) return@withLock
+                if (activeAttemptId != attemptId || currentSession?.engineId != engineId) return@withLock
                 when (event) {
                     is EngineEvent.TransportReady -> {
                         dispatch(ConnectionEvent.EngineReady(engineId))
@@ -155,25 +161,28 @@ class ConnectionCoordinator(
     }
 
     private suspend fun cleanupSessionLocked() {
-        val session = currentSession
-        currentSession = null
-        if (session != null) {
-            try {
-                adapters[session.engineId]?.disconnect(session)
-            } catch (_: Exception) {
-                // Continue to TUN teardown even when adapter shutdown fails.
+        withContext(NonCancellable) {
+            activeAttemptId += 1L
+            val session = currentSession
+            currentSession = null
+            if (session != null) {
+                try {
+                    adapters[session.engineId]?.disconnect(session)
+                } catch (_: Exception) {
+                    // Continue to TUN teardown even when adapter shutdown fails.
+                }
             }
+            try {
+                onVpnInterfaceTornDown()
+            } catch (_: Exception) {
+                // Preserve fail-closed state.
+            }
+            _diagnostics.value = _diagnostics.value.copy(
+                activeEngineId = null,
+                egressIp = null,
+                lastLatencyMillis = null
+            )
         }
-        try {
-            onVpnInterfaceTornDown()
-        } catch (_: Exception) {
-            // Preserve fail-closed state.
-        }
-        _diagnostics.value = _diagnostics.value.copy(
-            activeEngineId = null,
-            egressIp = null,
-            lastLatencyMillis = null
-        )
     }
 
     fun disconnect() {
