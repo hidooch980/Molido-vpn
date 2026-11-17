@@ -15,7 +15,6 @@ object ServerCountryClassifier {
         ServerCountry("NL", "هلند", "Netherlands", "🇳🇱"),
         ServerCountry("FR", "فرانسه", "France", "🇫🇷"),
         ServerCountry("GB", "بریتانیا", "United Kingdom", "🇬🇧"),
-        ServerCountry("UK", "بریتانیا", "United Kingdom", "🇬🇧"),
         ServerCountry("FI", "فنلاند", "Finland", "🇫🇮"),
         ServerCountry("SE", "سوئد", "Sweden", "🇸🇪"),
         ServerCountry("CH", "سوئیس", "Switzerland", "🇨🇭"),
