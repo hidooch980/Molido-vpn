@@ -23,7 +23,6 @@ import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
 import com.molido.vpn.engine.hysteria.Hysteria2EngineAdapter
 import com.molido.vpn.engine.warp.CleanIpResult
 import com.molido.vpn.engine.warp.CleanIpScanner
-import com.molido.vpn.engine.warp.WarpEngineAdapter
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.engine.xray.XrayEngineAdapter
 import com.molido.vpn.importer.ConfigImporter
@@ -89,7 +88,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter()
-    private val warpAdapter = WarpEngineAdapter()
     private val hysteriaAdapter = Hysteria2EngineAdapter()
 
     val coordinator = ConnectionCoordinator(
@@ -99,7 +97,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
             xrayAdapter.id to xrayAdapter,
-            warpAdapter.id to warpAdapter,
             hysteriaAdapter.id to hysteriaAdapter
         ),
         // GoBackend creates, owns, and tears down its own TUN. Other engines
