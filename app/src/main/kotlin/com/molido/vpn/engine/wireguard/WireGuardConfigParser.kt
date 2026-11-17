@@ -270,7 +270,7 @@ object WireGuardTunnelPolicy {
         }
         if (existingDnsIndex != null) lines[existingDnsIndex] = dnsLine
         else lines.add(interfaceIndex + 1, dnsLine)
-        return lines.joinToString("\\n")
+        return lines.joinToString("\n")
     }
 
     private fun isIpv4Literal(value: String): Boolean {
