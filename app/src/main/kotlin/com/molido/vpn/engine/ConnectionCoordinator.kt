@@ -218,7 +218,6 @@ class ConnectionCoordinator(
                 try {
                     val adapter = adapters[session.engineId] ?: throw IllegalStateException("SESSION_ADAPTER_MISSING")
                     adapter.disconnect(session)
-                    currentSession = null
                 } catch (_: Exception) {
                     // Retain the session so a later explicit disconnect can retry teardown.
                     teardownSucceeded = false
@@ -227,9 +226,11 @@ class ConnectionCoordinator(
             try {
                 onVpnInterfaceTornDown()
             } catch (_: Exception) {
+                // Keep session ownership until both adapter and TUN teardown have succeeded.
                 teardownSucceeded = false
             }
             if (teardownSucceeded) {
+                currentSession = null
                 _diagnostics.value = _diagnostics.value.copy(
                     activeEngineId = null,
                     egressIp = null,
