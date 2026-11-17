@@ -5,6 +5,10 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.HttpsURLConnection
+import java.net.InetSocketAddress
+import java.net.Socket
+import javax.net.ssl.SSLSocketFactory
 import java.net.InetAddress
 import java.net.URL
 import java.net.URLDecoder
@@ -138,6 +142,64 @@ object SubscriptionManager {
         return URL(uri.toASCIIString())
     }
 
+    /**
+     * SSLSocketFactory that connects only to the DNS answers validated for this
+     * request. The layered TLS socket receives the original hostname, preserving
+     * SNI and normal HTTPS certificate hostname checks in HttpsURLConnection.
+     */
+    private class PinnedAddressSocketFactory(
+        private val hostname: String,
+        private val addresses: Array<InetAddress>
+    ) : SSLSocketFactory() {
+        private val delegate = SSLSocketFactory.getDefault() as SSLSocketFactory
+
+        override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
+        override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
+        override fun createSocket(): Socket = delegate.createSocket()
+        override fun createSocket(socket: Socket, host: String, port: Int, autoClose: Boolean): Socket =
+            delegate.createSocket(socket, host, port, autoClose)
+
+        override fun createSocket(host: String, port: Int): Socket =
+            connectPinned(hostname, port, null, 0)
+
+        override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
+            connectPinned(hostname, port, localHost, localPort)
+
+        override fun createSocket(address: InetAddress, port: Int): Socket =
+            connectPinned(hostname, port, null, 0)
+
+        override fun createSocket(
+            address: InetAddress,
+            port: Int,
+            localAddress: InetAddress,
+            localPort: Int
+        ): Socket = connectPinned(hostname, port, localAddress, localPort)
+
+        private fun connectPinned(
+            host: String,
+            port: Int,
+            localAddress: InetAddress?,
+            localPort: Int
+        ): Socket {
+            require(host.equals(hostname, ignoreCase = true) && port == 443) {
+                "SUBSCRIPTION_PIN_MISMATCH"
+            }
+            var lastError: Exception? = null
+            for (address in addresses) {
+                val raw = Socket()
+                try {
+                    if (localAddress != null) raw.bind(InetSocketAddress(localAddress, localPort))
+                    raw.connect(InetSocketAddress(address, port), CONNECT_TIMEOUT_MS)
+                    return delegate.createSocket(raw, hostname, port, true)
+                } catch (error: Exception) {
+                    lastError = error
+                    try { raw.close() } catch (_: Exception) { }
+                }
+            }
+            throw IOException("SUBSCRIPTION_CONNECT_FAILED", lastError)
+        }
+    }
+
     private fun isNonPublicAddress(address: InetAddress): Boolean {
         if (address.isAnyLocalAddress || address.isLoopbackAddress ||
             address.isLinkLocalAddress || address.isSiteLocalAddress ||
@@ -175,8 +237,19 @@ object SubscriptionManager {
         subscriptionUrl: String,
         sourceId: String? = null
     ): SubscriptionFetchReport = withContext(Dispatchers.IO) {
-        val url = validateSubscriptionUrl(subscriptionUrl)
-        val connection = (url.openConnection() as HttpURLConnection).apply {
+        // Resolve once, validate every answer, then pin the TCP connection to
+        // those exact addresses. TLS still uses the original hostname for SNI
+        // and certificate hostname verification.
+        val url = validateSubscriptionUrl(subscriptionUrl, resolveDns = false)
+        val host = url.host.removePrefix("[").removeSuffix("]")
+        val pinnedAddresses = try { InetAddress.getAllByName(host) } catch (_: Exception) {
+            throw IllegalArgumentException("SUBSCRIPTION_DNS_FAILED")
+        }
+        require(pinnedAddresses.isNotEmpty() && pinnedAddresses.none(::isNonPublicAddress)) {
+            "SUBSCRIPTION_HOST_BLOCKED"
+        }
+        val connection = (url.openConnection() as HttpsURLConnection).apply {
+            sslSocketFactory = PinnedAddressSocketFactory(host, pinnedAddresses)
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             instanceFollowRedirects = false
