@@ -52,9 +52,10 @@ object ServerCountryClassifier {
                 normalized.contains(country.nameFa.lowercase())
         }
         if (byName != null) return byName
-        val code = Regex("(?:^|[^A-Za-z])([A-Za-z]{2})(?:$|[^A-Za-z])")
-            .find(label)?.groupValues?.getOrNull(1)?.uppercase()
-        return countries.firstOrNull { it.code == code } ?: UNKNOWN
+        val code = Regex("(?:^|[^A-Z])([A-Z]{2})(?:$|[^A-Z])")
+            .find(label)?.groupValues?.getOrNull(1)
+        val normalizedCode = if (code == "UK") "GB" else code
+        return countries.firstOrNull { it.code == normalizedCode } ?: UNKNOWN
     }
 
     fun displayName(country: ServerCountry, persian: Boolean): String =
