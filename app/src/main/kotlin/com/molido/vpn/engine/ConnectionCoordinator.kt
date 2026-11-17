@@ -80,7 +80,9 @@ class ConnectionCoordinator(
                 try {
                     val session = adapter.connect(
                         configuration = configuration,
-                        protectSocket = { true },
+                        // Do not claim socket protection for adapters that do not implement it.
+                        // GoBackend protects its own native sockets internally.
+                        protectSocket = { false },
                         onEvent = { event -> handleEngineEvent(engineId, event) }
                     )
                     currentSession = session
