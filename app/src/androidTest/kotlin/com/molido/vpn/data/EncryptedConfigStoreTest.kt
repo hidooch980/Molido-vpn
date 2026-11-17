@@ -68,6 +68,24 @@ class EncryptedConfigStoreTest {
     }
 
     @Test
+    fun subscriptionUrlsAndSnapshotsAreEncryptedAndRoundTrip() {
+        val urls = listOf("https://example.com/sub.txt", "https://raw.githubusercontent.com/example/sub.txt")
+        store.saveSubscriptions(urls)
+        val encryptedUrls = preferences.getString("subscriptions_urls_enc", null)
+        assertNotNull(encryptedUrls)
+        assertTrue(encryptedUrls!!.startsWith("enc:v1:"))
+        assertFalse(encryptedUrls.contains("example.com"))
+        assertEquals(urls, store.getSubscriptions())
+
+        val snapshot = """{"sources":{"test":{"configs":[{"engineId":"wireguard","payload":"private-profile"}]}}}"""
+        store.saveSubscriptionSnapshot(snapshot)
+        val encryptedSnapshot = preferences.getString("subscription_snapshot_enc", null)
+        assertNotNull(encryptedSnapshot)
+        assertFalse(encryptedSnapshot!!.contains("private-profile"))
+        assertEquals(snapshot, store.getSubscriptionSnapshot())
+    }
+
+    @Test
     fun corruptedCiphertextFailsClosedAndIsCleared() {
         preferences.edit().putString("active_config_payload", "enc:v1:not-valid-ciphertext").commit()
 
