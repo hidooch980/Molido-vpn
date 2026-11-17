@@ -36,6 +36,8 @@ class ConnectionCoordinator(
     private val lifecycleMutex = Mutex()
     private var currentSession: EngineSession? = null
     private var activeAttemptId: Long = 0L
+    private var pendingEngineId: String? = null
+    private var pendingConfiguration: EngineConfiguration? = null
 
     fun getAdapter(engineId: String): EngineAdapter? = adapters[engineId]
 
@@ -60,6 +62,8 @@ class ConnectionCoordinator(
                     dispatch(ConnectionEvent.Fail("CONFIG_VALIDATION_FAILED:" + validation.reasonCode))
                     return@withLock
                 }
+                pendingEngineId = engineId
+                pendingConfiguration = configuration
                 dispatch(ConnectionEvent.Start)
             }
         }
@@ -68,13 +72,20 @@ class ConnectionCoordinator(
     fun onVpnPermissionGranted(engineId: String, configuration: EngineConfiguration) {
         scope.launch {
             lifecycleMutex.withLock {
-                // Ignore stale or duplicate permission callbacks.
-                if (_state.value != ConnectionState.Preparing) return@withLock
+                // A permission callback must match the exact validated request.
+                if (_state.value != ConnectionState.Preparing || pendingEngineId != engineId) return@withLock
+                val expected = pendingConfiguration ?: return@withLock
+                if (expected.allowIpv4 != configuration.allowIpv4 ||
+                    expected.allowIpv6 != configuration.allowIpv6 ||
+                    !expected.opaquePayload.contentEquals(configuration.opaquePayload)
+                ) return@withLock
                 val adapter = adapters[engineId]
                 if (adapter == null) {
                     dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
                     return@withLock
                 }
+                pendingEngineId = null
+                pendingConfiguration = null
                 activeAttemptId += 1L
                 val attemptId = activeAttemptId
                 dispatch(ConnectionEvent.PermissionGranted(engineId))
@@ -166,6 +177,8 @@ class ConnectionCoordinator(
     private suspend fun cleanupSessionLocked() {
         withContext(NonCancellable) {
             activeAttemptId += 1L
+            pendingEngineId = null
+            pendingConfiguration = null
             val session = currentSession
             currentSession = null
             if (session != null) {
