@@ -25,14 +25,29 @@ data class DnsResolverObservation(
     val resolverAddresses: List<String>,
     val publicAddresses: List<String> = emptyList(),
     val conclusion: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    /** The DNS API used for the unique lookup; null means the probe never started. */
+    val lookupPath: String? = null,
+    val lookupAttempts: Int = 0
 )
 
 /**
+ * Calls Android's process-default system resolver (InetAddress), not Network.getAllByName().
+ * The caller verifies that the process default network is the active VPN before and after
+ * the batch. This observes the app process resolver path; it is not by itself proof that
+ * every other app's DNS is intercepted by the VPN.
+ */
+internal object SystemDnsLookup {
+    const val LOOKUP_PATH = "ANDROID_PROCESS_DEFAULT_SYSTEM_RESOLVER"
+
+    fun resolve(hostname: String): Array<InetAddress> = InetAddress.getAllByName(hostname)
+}
+
+/**
  * Independent diagnostics bound to Android's active VPN Network.
- * DNS observation triggers a unique system-resolver lookup and asks the
- * authoritative bash.ws test endpoint which recursive resolvers queried it.
- * Empty observations are inconclusive, never a clean-leak verdict.
+ * HTTPS evidence collection uses the VPN Network explicitly. Unique DNS names are resolved
+ * via Android's process-default system resolver so this test is distinct from app-owned DoH.
+ * Empty authoritative observations are inconclusive, never a clean-leak verdict.
  */
 class IndependentLeakTestRunner(context: Context) {
     private val connectivity = context.applicationContext
@@ -61,36 +76,53 @@ class IndependentLeakTestRunner(context: Context) {
             ?.takeIf { it.matches(Regex("[A-Za-z0-9-]{1,64}")) }
             ?: return@withContext DnsResolverObservation(false, emptyList(), errorCode = "DNS_TEST_ID_UNAVAILABLE")
 
-        // Register the public source address independently over IPv4 and IPv6,
-        // matching the authoritative test client's flow.
         fetchText(network, URL("https://ipv4.bash.ws/myip/test/$testId"), 128)
         fetchText(network, URL("https://ipv6.bash.ws/myip/test/$testId"), 128)
 
-        // Follow bash.ws's documented two-phase flow: resolve unique numbered
-        // subdomains explicitly on the same VPN Network (not the process default),
-        // then fetch authoritative
-        // resolver observations for the same test ID.
+        var lookupAttempts = 0
         for (index in 1..10) {
-            if (connectivity.activeNetwork != network) {
-                return@withContext DnsResolverObservation(false, emptyList(), errorCode = "VPN_NETWORK_CHANGED")
+            if (!isSameActiveVpnNetwork(network)) {
+                return@withContext DnsResolverObservation(
+                    false, emptyList(), errorCode = "VPN_NETWORK_CHANGED",
+                    lookupPath = SystemDnsLookup.LOOKUP_PATH, lookupAttempts = lookupAttempts
+                )
             }
+            lookupAttempts++
             try {
-                network.getAllByName("$index.$testId.bash.ws")
+                // Deliberately use InetAddress (Android process-default resolver), not
+                // network.getAllByName(): this exercises the system resolver API path.
+                SystemDnsLookup.resolve("$index.$testId.bash.ws")
             } catch (_: Exception) {
-                // The probe lookup may be filtered or return no address; the authoritative
-                // DNS server can still have recorded the recursive resolver query.
+                // NXDOMAIN/filtering can still be visible in the authoritative resolver log.
+            }
+            if (!isSameActiveVpnNetwork(network)) {
+                return@withContext DnsResolverObservation(
+                    false, emptyList(), errorCode = "VPN_NETWORK_CHANGED",
+                    lookupPath = SystemDnsLookup.LOOKUP_PATH, lookupAttempts = lookupAttempts
+                )
             }
         }
 
         repeat(5) { attempt ->
-            if (connectivity.activeNetwork != network) {
-                return@withContext DnsResolverObservation(false, emptyList(), errorCode = "VPN_NETWORK_CHANGED")
+            if (!isSameActiveVpnNetwork(network)) {
+                return@withContext DnsResolverObservation(
+                    false, emptyList(), errorCode = "VPN_NETWORK_CHANGED",
+                    lookupPath = SystemDnsLookup.LOOKUP_PATH, lookupAttempts = lookupAttempts
+                )
             }
             val result = fetchResolverObservation(network, testId)
-            if (result.evidenceAvailable) return@withContext result
+            if (result.evidenceAvailable) {
+                return@withContext result.copy(
+                    lookupPath = SystemDnsLookup.LOOKUP_PATH,
+                    lookupAttempts = lookupAttempts
+                )
+            }
             if (attempt < 4) delay(600)
         }
-        DnsResolverObservation(false, emptyList(), errorCode = "DNS_OBSERVATION_INCONCLUSIVE")
+        DnsResolverObservation(
+            false, emptyList(), errorCode = "DNS_OBSERVATION_INCONCLUSIVE",
+            lookupPath = SystemDnsLookup.LOOKUP_PATH, lookupAttempts = lookupAttempts
+        )
     }
 
     private fun requireVpnNetwork(): Network {
@@ -102,6 +134,12 @@ class IndependentLeakTestRunner(context: Context) {
         return network
     }
 
+    private fun isSameActiveVpnNetwork(network: Network): Boolean {
+        if (connectivity.activeNetwork != network) return false
+        return connectivity.getNetworkCapabilities(network)
+            ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    }
+
     private fun probeFamily(
         network: Network,
         family: String,
@@ -110,6 +148,7 @@ class IndependentLeakTestRunner(context: Context) {
     ): AddressFamilyProbe {
         var connection: HttpsURLConnection? = null
         return try {
+            check(isSameActiveVpnNetwork(network)) { "VPN_NETWORK_CHANGED" }
             connection = network.openConnection(URL(endpoint)) as? HttpsURLConnection
                 ?: throw IllegalStateException("HTTPS_REQUIRED")
             connection.connectTimeout = 5_000
@@ -128,6 +167,7 @@ class IndependentLeakTestRunner(context: Context) {
                 }
                 output.toString(Charsets.US_ASCII.name()).trim()
             }
+            check(isSameActiveVpnNetwork(network)) { "VPN_NETWORK_CHANGED" }
             val address = PublicEgressIpValidator.parse(body)
                 ?: throw IllegalArgumentException("EGRESS_IP_INVALID")
             check(address.address.size == expectedBytes) { "EGRESS_ADDRESS_FAMILY_MISMATCH" }
