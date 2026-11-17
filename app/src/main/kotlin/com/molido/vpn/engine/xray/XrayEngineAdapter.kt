@@ -25,7 +25,7 @@ class XrayEngineAdapter : EngineAdapter {
             val uri = String(configuration.opaquePayload, Charsets.UTF_8)
             VlessConfigParser.validate(uri)
         } catch (e: Exception) {
-            ValidationResult.Invalid("Failed to validate Xray URI: ${e.message}")
+            ValidationResult.Invalid("XRAY_CONFIG_INVALID")
         }
     }
 
