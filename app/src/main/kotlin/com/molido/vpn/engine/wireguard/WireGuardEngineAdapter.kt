@@ -75,6 +75,8 @@ class WireGuardEngineAdapter(
             throw IllegalStateException("ANDROID_CONTEXT_REQUIRED")
         }
 
+        require(configuration.opaquePayload.isNotEmpty()) { "CONFIG_EMPTY" }
+        require(configuration.opaquePayload.size <= 64 * 1024) { "CONFIG_TOO_LARGE" }
         val configText = String(configuration.opaquePayload, Charsets.UTF_8)
         val parsed = try {
             Config.parse(StringReader(configText))
