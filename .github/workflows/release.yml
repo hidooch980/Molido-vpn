@@ -34,6 +34,14 @@ jobs:
             echo "::error::Release tags must point to a commit already merged into main"
             exit 1
           }
+          grep -Eq 'versionCode = 50000' app/build.gradle.kts || {
+            echo "::error::Source is not the MolidoVPN 5.0.0 candidate."
+            exit 1
+          }
+          grep -Eq 'versionName = "5.0.0"' app/build.gradle.kts || {
+            echo "::error::Source versionName does not match the final 5.0.0 tag."
+            exit 1
+          }
 
       - name: Require existing owner signing key
         shell: bash
