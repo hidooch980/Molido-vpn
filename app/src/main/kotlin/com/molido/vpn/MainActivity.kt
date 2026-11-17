@@ -1002,9 +1002,9 @@ fun SecuritySettingsTab(
                     )
                     Text(
                         if (currentLanguage == AppLanguage.PERSIAN)
-                            "با اجرای دستی، ipify برای IPv4/IPv6، سرویس bash.ws برای مشاهده DNS و سرویس‌دهنده DoH انتخاب‌شده برای پرس‌وجوی ثابت example.com استفاده می‌شود. این سرویس‌ها IP مبدأ و داده آزمون را دریافت می‌کنند. نتیجه خالی به معنی نبود نشت نیست."
+                            "با اجرای دستی، ipify برای IPv4/IPv6، سرویس bash.ws برای مشاهده DNS و سرویس‌دهنده DoH انتخاب‌شده برای پرس‌وجوی ثابت example.com استفاده می‌شود. آزمون DoH فقط درخواست‌های خود برنامه را پوشش می‌دهد و تبدیل DNS کل سیستم هنوز پیاده‌سازی نشده است. این سرویس‌ها IP مبدأ و داده آزمون را دریافت می‌کنند. نتیجه خالی به معنی نبود نشت نیست."
                         else
-                            "Manual test contacts ipify for separate IPv4/IPv6 probes, bash.ws to observe system DNS resolvers, and the selected DoH provider with a fixed example.com A/AAAA query. These services receive your request source IP and test data. Empty results are inconclusive, not proof of no leak.",
+                            "Manual test contacts ipify for separate IPv4/IPv6 probes, bash.ws to observe system DNS resolvers, and the selected DoH provider with a fixed example.com A/AAAA query. The DoH check covers app-owned lookups only; system-wide DNS interception is not implemented. These services receive your request source IP and test data. Empty results are inconclusive, not proof of no leak.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF94A3B8)
                     )
