@@ -19,7 +19,7 @@
 
 The following are NOT certified by these source changes or by emulator builds:
 
-- The independent diagnostic runner now probes IPv4-only and IPv6-only HTTPS endpoints and triggers a random system-resolver query observed by the external bash.ws authoritative test service. Results are not a device certification; an empty resolver response is inconclusive, and the third-party service receives the test nonce, observed resolver IPs and request source IP.
+- The independent diagnostic runner now probes IPv4-only and IPv6-only HTTPS endpoints and follows the bash.ws ID → numbered unique DNS subdomains → JSON result flow to observe recursive resolver IPs and the service conclusion. Results are not a device certification; an empty resolver response is inconclusive, and ipify/bash.ws receive the request source IP and test metadata.
 - RFC 8484 DoH client is implemented for app-owned A/AAAA lookups and binds HTTPS requests to Android active VPN Network. It does not intercept system-wide UDP/53 traffic; the GoBackend TUN still needs a DNS packet proxy before system-wide DoH can be claimed.
 - Android Always-on VPN / lockdown configuration and process-death behavior.
 - Peer handshake, actual packet forwarding, socket protection and reconnect/handover tests on a physical phone. Validated physical network changes now trigger a fresh VPN-bound egress check and bounded recovery; these behaviors still need device acceptance.
