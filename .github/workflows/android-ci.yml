@@ -48,17 +48,11 @@ jobs:
         run: ./gradlew lintDebug --stacktrace
       # Instrumentation tests compile and install their app target only inside the ephemeral CI emulator.
       # No standalone APK is assembled, retained, uploaded, or distributed by this workflow.
-      - name: Android Keystore instrumentation tests
+      # Compile Android instrumentation test sources only. Do not assemble, install,
+      # upload, or distribute any APK; physical Keystore behavior remains unverified.
+      - name: Compile Android instrumentation test sources (no APK)
         if: success()
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          profile: pixel_2
-          target: google_apis
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data
-          disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest --stacktrace
+        run: ./gradlew compileDebugAndroidTestKotlin --stacktrace
       - name: Upload test and lint reports
         if: always()
         uses: actions/upload-artifact@v4
