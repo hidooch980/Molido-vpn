@@ -20,7 +20,7 @@
 The following are NOT certified by these source changes or by emulator builds:
 
 - Real-device IPv4, IPv6 and DNS leak testing under normal operation and tunnel loss.
-- Real DNS-over-HTTPS implementation and verification; current DNS builder only sets resolver IP addresses.
+- RFC 8484 DoH client is implemented for app-owned A/AAAA lookups and binds HTTPS requests to Android active VPN Network. It does not intercept system-wide UDP/53 traffic; the GoBackend TUN still needs a DNS packet proxy before system-wide DoH can be claimed.
 - Android Always-on VPN / lockdown configuration and process-death behavior.
 - Peer handshake, actual packet forwarding, socket protection and reconnect/handover tests on a physical phone.
 - Penetration testing of malformed configuration imports, subscription parsing, local storage, exported components and update delivery.
