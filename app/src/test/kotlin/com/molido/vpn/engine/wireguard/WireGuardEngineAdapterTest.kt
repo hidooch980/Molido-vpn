@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WireGuardEngineAdapterTest {
-
     private val validConfig = """
         [Interface]
         PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
@@ -47,7 +46,7 @@ class WireGuardEngineAdapterTest {
     }
 
     @Test
-    fun connectFailsClosedUntilRealGoBackendIsIntegrated() = runBlocking {
+    fun connectWithoutAndroidContextFailsClosed() = runBlocking {
         val adapter = WireGuardEngineAdapter()
         val events = mutableListOf<EngineEvent>()
         var failed = false
@@ -57,12 +56,12 @@ class WireGuardEngineAdapterTest {
                 protectSocket = { true },
                 onEvent = { events.add(it) }
             )
-        } catch (e: UnsupportedOperationException) {
-            failed = e.message == "WIREGUARD_BACKEND_NOT_INTEGRATED"
+        } catch (error: IllegalStateException) {
+            failed = error.message == "ANDROID_CONTEXT_REQUIRED"
         }
 
-        assertTrue("WireGuard must not report a fake transport-ready event", failed)
+        assertTrue("Android context is required before native backend startup", failed)
         assertEquals(1, events.size)
-        assertTrue(events[0] is EngineEvent.Failed)
+        assertTrue(events.single() is EngineEvent.Failed)
     }
 }
