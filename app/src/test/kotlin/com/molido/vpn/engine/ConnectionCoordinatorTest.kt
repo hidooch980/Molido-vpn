@@ -169,9 +169,9 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
-    fun networkHandoverTriggersFreshEgressVerificationAndFailsClosedOnFailure() = runTest {
-        val verifier = MockTrafficVerifier(simulatedSuccess = true)
-        val adapter = TestReadyAdapter()
+    fun networkHandoverRetriesAndReconnectsAfterTemporaryEgressFailure() = runTest {
+        val verifier = SequencedTrafficVerifier(true, false, true)
+        val adapter = RecoveringTestAdapter()
         val coordinator = ConnectionCoordinator(
             scope = this,
             trafficVerifier = verifier,
@@ -185,15 +185,11 @@ class ConnectionCoordinatorTest {
         advanceUntilIdle()
         assertTrue(coordinator.state.value is ConnectionState.Connected)
 
-        // Simulate the new underlying network failing to carry VPN egress.
-        verifier.simulatedSuccess = false
-        verifier.simulatedError = "HANDOVER_EGRESS_FAILED"
         coordinator.verifyActiveTunnelAfterNetworkChange()
         advanceUntilIdle()
 
-        val state = coordinator.state.value
-        assertTrue("Failed handover verification must not remain Connected: $state", state is ConnectionState.Failed)
-        assertEquals("HANDOVER_EGRESS_FAILED", (state as ConnectionState.Failed).reasonCode)
+        assertTrue("A transient handover failure should recover only after a fresh verified egress", coordinator.state.value is ConnectionState.Connected)
+        assertEquals(2, adapter.connectCalls)
     }
 
     @Test
@@ -217,6 +213,19 @@ class ConnectionCoordinatorTest {
         assertTrue("State should be Failed, but was: $state", state is ConnectionState.Failed)
         val failed = state as ConnectionState.Failed
         assertTrue(failed.reasonCode.contains("Egress test failed"))
+    }
+
+    private class SequencedTrafficVerifier(vararg outcomes: Boolean) : com.molido.vpn.verifier.TrafficVerifier {
+        private val results = ArrayDeque(outcomes.toList())
+
+        override suspend fun verify(timeoutMillis: Long): com.molido.vpn.verifier.VerificationResult {
+            val success = if (results.isEmpty()) true else results.removeFirst()
+            return if (success) {
+                com.molido.vpn.verifier.VerificationResult(true, latencyMillis = 20L, egressIp = "8.8.8.8")
+            } else {
+                com.molido.vpn.verifier.VerificationResult(false, errorMessage = "HANDOVER_EGRESS_FAILED")
+            }
+        }
     }
 
     private class RecoveringTestAdapter : EngineAdapter {
