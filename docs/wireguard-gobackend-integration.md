@@ -8,6 +8,7 @@
 - Socket protection: the upstream GoBackend protects its native IPv4 and IPv6 UDP sockets through its own VPN service. The generic adapter socket-protection callback is not used by GoBackend; the coordinator now fails closed for adapters that rely on that callback.
 - State: backend activation emits `TransportReady` only after `GoBackend.setState(UP)` returns and reports `UP`. This is not considered a verified internet connection; the coordinator must still pass the HTTPS egress verifier.
 - Validation: the app's bounded config validation is followed by the upstream WireGuard parser before activation.
+- WireGuard startup is enabled only in debug builds for internal device acceptance. Release builds fail closed until the full physical-device acceptance matrix is completed and reviewed.
 - Non-WireGuard engines remain blocked at the TUN gate until they have complete packet-forwarding backends.
 
 ## Important boundaries
