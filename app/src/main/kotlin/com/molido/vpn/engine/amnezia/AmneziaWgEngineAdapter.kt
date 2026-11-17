@@ -6,7 +6,6 @@ import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.EngineEvent
 import com.molido.vpn.engine.EngineSession
 import com.molido.vpn.engine.ValidationResult
-import java.util.concurrent.atomic.AtomicBoolean
 
 class AmneziaWgEngineAdapter : EngineAdapter {
     override val id: String = "amnezia"
@@ -31,42 +30,12 @@ class AmneziaWgEngineAdapter : EngineAdapter {
     }
 
     override suspend fun connect(
-        configuration: EngineConfiguration,
-        protectSocket: (Int) -> Boolean,
-        onEvent: (EngineEvent) -> Unit
+        @Suppress("UNUSED_PARAMETER") configuration: EngineConfiguration,
+        @Suppress("UNUSED_PARAMETER") protectSocket: (Int) -> Boolean,
+        @Suppress("UNUSED_PARAMETER") onEvent: (EngineEvent) -> Unit
     ): EngineSession {
-        val configText = String(configuration.opaquePayload, Charsets.UTF_8)
-        val config = AmneziaWgConfigParser.parse(configText)
-
-        val session = AmneziaSession(id, config, onEvent)
-        // Obfuscated tunnel parameters verified, handshake ready
-        onEvent(EngineEvent.TransportReady)
-        return session
-    }
-
-    override suspend fun disconnect(session: EngineSession) {
-        if (session is AmneziaSession) {
-            session.terminate()
-        }
-    }
-
-    class AmneziaSession(
-        override val engineId: String,
-        val config: AmneziaWgConfig,
-        private val onEvent: (EngineEvent) -> Unit
-    ) : EngineSession {
-        private val active = AtomicBoolean(true)
-
-        fun updateStats(bytesIn: Long, bytesOut: Long) {
-            if (active.get()) {
-                onEvent(EngineEvent.Statistics(bytesIn, bytesOut))
-            }
-        }
-
-        fun terminate() {
-            active.set(false)
-        }
-
-        val isActive: Boolean get() = active.get()
+        // Fail closed until a real native transport, protected socket handling,
+        // TUN packet forwarding, and device acceptance tests are integrated.
+        throw UnsupportedOperationException("ENGINE_RUNTIME_NOT_IMPLEMENTED")
     }
 }
