@@ -11,7 +11,6 @@ import org.json.JSONArray
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.URL
-import java.security.SecureRandom
 import javax.net.ssl.HttpsURLConnection
 
 data class AddressFamilyProbe(
@@ -24,6 +23,8 @@ data class AddressFamilyProbe(
 data class DnsResolverObservation(
     val evidenceAvailable: Boolean,
     val resolverAddresses: List<String>,
+    val publicAddresses: List<String> = emptyList(),
+    val conclusion: String? = null,
     val errorCode: String? = null
 )
 
@@ -49,34 +50,41 @@ class IndependentLeakTestRunner(context: Context) {
         val network = try {
             requireVpnNetwork()
         } catch (error: Exception) {
-            return@withContext DnsResolverObservation(false, emptyList(), error.message ?: "VPN_NETWORK_NOT_ACTIVE")
+            return@withContext DnsResolverObservation(
+                evidenceAvailable = false,
+                resolverAddresses = emptyList(),
+                errorCode = error.message ?: "VPN_NETWORK_NOT_ACTIVE"
+            )
         }
-        val nonce = buildString(32) {
-            val bytes = ByteArray(16)
-            SecureRandom().nextBytes(bytes)
-            bytes.forEach { append((it.toInt() and 0xff).toString(16).padStart(2, '0')) }
-        }
-        val probeHost = "$nonce.bash.ws"
+        val testId = fetchText(network, URL("https://bash.ws/id"), 128)
+            ?.trim()
+            ?.takeIf { it.matches(Regex("[A-Za-z0-9-]{1,64}")) }
+            ?: return@withContext DnsResolverObservation(false, emptyList(), errorCode = "DNS_TEST_ID_UNAVAILABLE")
 
-        // Deliberately use Android's system resolver: this tests the OS DNS path,
-        // not the separate app-scoped DoH client.
-        try {
-            InetAddress.getAllByName(probeHost)
-        } catch (_: Exception) {
-            // NXDOMAIN or a filtered answer can still leave an authoritative query record.
+        // Follow bash.ws's documented two-phase flow: resolve unique numbered
+        // subdomains through Android's system resolver, then fetch authoritative
+        // resolver observations for the same test ID.
+        for (index in 1..10) {
+            if (connectivity.activeNetwork != network) {
+                return@withContext DnsResolverObservation(false, emptyList(), errorCode = "VPN_NETWORK_CHANGED")
+            }
+            try {
+                InetAddress.getAllByName("$index.$testId.bash.ws")
+            } catch (_: Exception) {
+                // The probe lookup may be filtered or return no address; the authoritative
+                // DNS server can still have recorded the recursive resolver query.
+            }
         }
 
         repeat(5) { attempt ->
             if (connectivity.activeNetwork != network) {
-                return@withContext DnsResolverObservation(false, emptyList(), "VPN_NETWORK_CHANGED")
+                return@withContext DnsResolverObservation(false, emptyList(), errorCode = "VPN_NETWORK_CHANGED")
             }
-            val result = fetchResolverObservation(network, nonce)
-            if (result.isNotEmpty()) {
-                return@withContext DnsResolverObservation(true, result.distinct())
-            }
+            val result = fetchResolverObservation(network, testId)
+            if (result.evidenceAvailable) return@withContext result
             if (attempt < 4) delay(600)
         }
-        DnsResolverObservation(false, emptyList(), "DNS_OBSERVATION_INCONCLUSIVE")
+        DnsResolverObservation(false, emptyList(), errorCode = "DNS_OBSERVATION_INCONCLUSIVE")
     }
 
     private fun requireVpnNetwork(): Network {
@@ -125,39 +133,65 @@ class IndependentLeakTestRunner(context: Context) {
         }
     }
 
-    private fun fetchResolverObservation(network: Network, nonce: String): List<String> {
+    private fun fetchResolverObservation(network: Network, testId: String): DnsResolverObservation {
+        val body = fetchText(
+            network,
+            URL("https://bash.ws/dnsleak/test/$testId?json=2"),
+            16 * 1024
+        ) ?: return DnsResolverObservation(false, emptyList(), errorCode = "DNS_OBSERVATION_HTTP_ERROR")
+        return try {
+            val array = JSONArray(body)
+            val resolvers = mutableListOf<String>()
+            val publicAddresses = mutableListOf<String>()
+            var conclusion: String? = null
+            var serviceError: String? = null
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                when (item.optString("type")) {
+                    "dns" -> item.optString("ip").takeIf(::isIpLiteral)?.let(resolvers::add)
+                    "ip" -> item.optString("ip").takeIf(::isIpLiteral)?.let(publicAddresses::add)
+                    "conclusion" -> conclusion = item.optString("text").takeIf { it.isNotBlank() }
+                    "error" -> serviceError = item.optString("text").takeIf { it.isNotBlank() }
+                }
+            }
+            if (serviceError != null) {
+                DnsResolverObservation(false, resolvers.distinct(), publicAddresses.distinct(), conclusion, serviceError)
+            } else {
+                DnsResolverObservation(
+                    evidenceAvailable = resolvers.isNotEmpty(),
+                    resolverAddresses = resolvers.distinct(),
+                    publicAddresses = publicAddresses.distinct(),
+                    conclusion = conclusion,
+                    errorCode = if (resolvers.isEmpty()) "DNS_OBSERVATION_INCONCLUSIVE" else null
+                )
+            }
+        } catch (_: Exception) {
+            DnsResolverObservation(false, emptyList(), errorCode = "DNS_OBSERVATION_RESPONSE_INVALID")
+        }
+    }
+
+    private fun fetchText(network: Network, url: URL, maxBytes: Int): String? {
         var connection: HttpsURLConnection? = null
         return try {
-            val url = URL("https://bash.ws/dnsleak/test/$nonce?json")
-            connection = network.openConnection(url) as? HttpsURLConnection
-                ?: return emptyList()
+            connection = network.openConnection(url) as? HttpsURLConnection ?: return null
             connection.connectTimeout = 5_000
             connection.readTimeout = 5_000
             connection.instanceFollowRedirects = false
             connection.requestMethod = "GET"
-            check(connection.responseCode == HttpsURLConnection.HTTP_OK) { "DNS_OBSERVATION_HTTP_ERROR" }
-            val body = connection.inputStream.use { input ->
+            if (connection.responseCode != HttpsURLConnection.HTTP_OK) return null
+            connection.inputStream.use { input ->
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(1024)
                 while (true) {
                     val count = input.read(buffer)
                     if (count < 0) break
-                    check(output.size() + count <= 16 * 1024) { "DNS_OBSERVATION_TOO_LARGE" }
+                    if (output.size() + count > maxBytes) return null
                     output.write(buffer, 0, count)
                 }
                 output.toString(Charsets.UTF_8.name())
             }
-            val array = JSONArray(body)
-            buildList {
-                for (index in 0 until array.length()) {
-                    val item = array.optJSONObject(index) ?: continue
-                    if (item.optString("type") != "dns") continue
-                    val ip = item.optString("ip")
-                    if (isIpLiteral(ip)) add(ip)
-                }
-            }
         } catch (_: Exception) {
-            emptyList()
+            null
         } finally {
             connection?.disconnect()
         }
