@@ -28,7 +28,7 @@ class SubscriptionRefreshWorker(
         val reports = mutableListOf<SubscriptionFetchReport>()
         var failures = 0
 
-        for ((index, url) in store.getSubscriptions().withIndex()) {
+        for ((index, url) in store.getSubscriptions().filterNot { it in store.getDisabledSubscriptions() }.withIndex()) {
             try {
                 reports += SubscriptionManager.fetchSubscriptionReport(url, "manual-$index")
             } catch (_: Exception) {
