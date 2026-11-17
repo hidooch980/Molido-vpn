@@ -1,4 +1,4 @@
-name: Release APK
+name: Signed Android Release
 
 on:
   push:
@@ -9,12 +9,45 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: signed-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_VERSION: "1.0.0"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          test "${GITHUB_REF_NAME}" = "v${APP_VERSION}" || {
+            echo "::error::This source tree is configured for v${APP_VERSION}; refusing tag ${GITHUB_REF_NAME}"
+            exit 1
+          }
+
+      - name: Require existing owner signing key
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "::error::Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "::error::Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "::error::Missing ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::Missing ANDROID_KEY_PASSWORD"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/molido-signing"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/molido-signing/release.keystore"
+          test -s "$RUNNER_TEMP/molido-signing/release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/molido-signing/release.keystore" >> "$GITHUB_ENV"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -28,22 +61,55 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
-
-      - name: Build Release and Debug APKs
+      - name: Run unit tests and lint
         run: |
-          ./gradlew assembleDebug --stacktrace
-          cp app/build/outputs/apk/debug/app-debug.apk MolidoVPN-v0.1.0.apk
-          cp app/build/outputs/apk/debug/app-debug.apk MolidoVPN.apk
+          ./gradlew testDebugUnitTest lintDebug --stacktrace
 
-      - name: Create GitHub Release and Upload APK
-        uses: softprops/action-gh-release@v2
+      - name: Run Android instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          target: google_apis
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest --stacktrace
+
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --stacktrace
+          mkdir -p release-output
+          cp app/build/outputs/apk/release/app-release.apk "release-output/MolidoVPN-v${APP_VERSION}.apk"
+
+      - name: Verify APK signature and calculate checksum
+        run: |
+          APK="release-output/MolidoVPN-v${APP_VERSION}.apk"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" > release-output/SHA256SUMS.txt
+          keytool -list -keystore "$ANDROID_KEYSTORE_PATH" -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" -alias "${{ secrets.ANDROID_KEY_ALIAS }}" >/dev/null
+
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MolidoVPN-v${{ env.APP_VERSION }}-signed
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: |
-            MolidoVPN-v0.1.0.apk
-            MolidoVPN.apk
+            release-output/MolidoVPN-v${{ env.APP_VERSION }}.apk
+            release-output/SHA256SUMS.txt
           generate_release_notes: true
           draft: false
           prerelease: false
