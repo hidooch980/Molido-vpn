@@ -79,7 +79,7 @@ class SubscriptionRefreshWorker(
                 .put("configs", JSONArray(configs))
                 .toString()
             store.saveSubscriptionSnapshot(snapshot)
-            Result.success()
+            if (failures > 0) Result.retry() else Result.success()
         } catch (_: Exception) {
             Result.retry()
         }
