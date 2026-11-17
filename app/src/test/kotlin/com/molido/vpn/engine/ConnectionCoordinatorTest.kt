@@ -80,6 +80,41 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun failedAdapterDisconnectRetainsSessionAndCanBeRetried() = runTest {
+        val adapter = RetryDisconnectAdapter()
+        var tunTeardownCalls = 0
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceTornDown = { tunTeardownCalls++ }
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertTrue("A failed teardown must not report Idle", coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.disconnectCalls)
+
+        // A new connection must remain blocked while the old session is still owned.
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, adapter.disconnectCalls)
+        assertEquals(2, tunTeardownCalls)
+    }
+
+    @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
         val adapter = TestReadyAdapter()
@@ -100,6 +135,33 @@ class ConnectionCoordinatorTest {
         assertTrue("State should be Failed, but was: $state", state is ConnectionState.Failed)
         val failed = state as ConnectionState.Failed
         assertTrue(failed.reasonCode.contains("Egress test failed"))
+    }
+
+    private class RetryDisconnectAdapter : EngineAdapter {
+        override val id: String = "retry-disconnect"
+        override val displayName: String = "Retry disconnect test adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var disconnectCalls = 0
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            val session = object : EngineSession {
+                override val engineId: String = id
+            }
+            onEvent(EngineEvent.TransportReady)
+            return session
+        }
+
+        override suspend fun disconnect(session: EngineSession) {
+            disconnectCalls++
+            if (disconnectCalls == 1) error("simulated backend teardown failure")
+        }
     }
 
     private class TestReadyAdapter : EngineAdapter {
