@@ -1,14 +1,32 @@
 package com.molido.vpn.engine.wireguard
 
+import android.content.Context
 import com.molido.vpn.engine.EngineAdapter
 import com.molido.vpn.engine.EngineCapabilities
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.EngineEvent
 import com.molido.vpn.engine.EngineSession
 import com.molido.vpn.engine.ValidationResult
+import com.wireguard.android.backend.GoBackend
+import com.wireguard.android.backend.Tunnel
+import com.wireguard.android.backend.Tunnel.State
+import com.wireguard.config.Config
+import java.io.StringReader
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-class WireGuardEngineAdapter : EngineAdapter {
+/**
+ * WireGuard userspace integration. GoBackend owns and establishes the only TUN
+ * interface and protects its native UDP sockets through its own VpnService.
+ * MolidoVpnService must not establish a second interface.
+ *
+ * A successful backend activation is followed by the coordinator's external
+ * HTTPS egress verifier before the UI can report a verified connection.
+ */
+class WireGuardEngineAdapter(
+    private val context: Context? = null
+) : EngineAdapter {
     override val id: String = "wireguard"
     override val displayName: String = "WireGuard"
 
@@ -21,62 +39,87 @@ class WireGuardEngineAdapter : EngineAdapter {
         supportsMtuConfiguration = true
     )
 
+    private val backend: GoBackend by lazy {
+        GoBackend(requireNotNull(context) { "ANDROID_CONTEXT_REQUIRED" })
+    }
+
     override suspend fun validate(configuration: EngineConfiguration): ValidationResult {
+        val text = try {
+            String(configuration.opaquePayload, Charsets.UTF_8)
+        } catch (_: Exception) {
+            return ValidationResult.Invalid("CONFIG_ENCODING_INVALID")
+        }
+        val localValidation = WireGuardConfigParser.validate(text)
+        if (localValidation is ValidationResult.Invalid) return localValidation
         return try {
-            val configText = String(configuration.opaquePayload, Charsets.UTF_8)
-            WireGuardConfigParser.validate(configText)
-        } catch (e: Exception) {
-            ValidationResult.Invalid("Failed to decode configuration payload: ${e.message}")
+            Config.parse(StringReader(text))
+            ValidationResult.Valid
+        } catch (_: Exception) {
+            ValidationResult.Invalid("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
         }
     }
 
     override suspend fun connect(
         configuration: EngineConfiguration,
-        protectSocket: (Int) -> Boolean,
+        @Suppress("UNUSED_PARAMETER") protectSocket: (Int) -> Boolean,
         onEvent: (EngineEvent) -> Unit
     ): EngineSession {
-        val configText = String(configuration.opaquePayload, Charsets.UTF_8)
-        val parsedConfig = try {
-            WireGuardConfigParser.parse(configText)
-        } catch (e: Exception) {
-            onEvent(EngineEvent.Failed("Config error: ${e.message}", recoverable = false))
-            throw e
+        val contextReady = context
+        if (contextReady == null) {
+            onEvent(EngineEvent.Failed("ANDROID_CONTEXT_REQUIRED", recoverable = false))
+            throw IllegalStateException("ANDROID_CONTEXT_REQUIRED")
         }
 
-        val session = WireGuardSession(
-            engineId = id,
-            config = parsedConfig,
-            onEvent = onEvent
-        )
+        val configText = String(configuration.opaquePayload, Charsets.UTF_8)
+        val parsed = try {
+            Config.parse(StringReader(configText))
+        } catch (_: Exception) {
+            onEvent(EngineEvent.Failed("WIREGUARD_UPSTREAM_CONFIG_REJECTED", recoverable = false))
+            throw IllegalArgumentException("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
+        }
 
-        // Signal that the engine transport has completed handshake and is ready for traffic verification
-        onEvent(EngineEvent.TransportReady)
-        return session
+        val backendActive = AtomicBoolean(false)
+        val tunnel = object : Tunnel {
+            override fun getName(): String = "MolidoVPN-WireGuard"
+            override fun onStateChange(newState: State) {
+                backendActive.set(newState == State.UP)
+            }
+        }
+        val session = WireGuardSession(tunnel, backendActive)
+        try {
+            withContext(Dispatchers.IO) {
+                backend.setState(tunnel, State.UP, parsed)
+            }
+            check(backend.getState(tunnel) == State.UP) { "WIREGUARD_BACKEND_NOT_UP" }
+            backendActive.set(true)
+            onEvent(EngineEvent.TransportReady)
+            return session
+        } catch (error: LinkageError) {
+            onEvent(EngineEvent.Failed("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", recoverable = false))
+            throw IllegalStateException("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", error)
+        } catch (error: Exception) {
+            onEvent(EngineEvent.Failed("WIREGUARD_BACKEND_START_FAILED", recoverable = true))
+            throw error
+        }
     }
 
     override suspend fun disconnect(session: EngineSession) {
-        if (session is WireGuardSession) {
-            session.terminate()
+        if (session !is WireGuardSession || !session.beginClose()) return
+        withContext(Dispatchers.IO) {
+            if (backend.getState(session.tunnel) == State.UP) {
+                backend.setState(session.tunnel, State.DOWN, null)
+            }
         }
     }
 
-    class WireGuardSession(
-        override val engineId: String,
-        val config: WireGuardConfig,
-        private val onEvent: (EngineEvent) -> Unit
+    inner class WireGuardSession internal constructor(
+        internal val tunnel: Tunnel,
+        private val backendActive: AtomicBoolean
     ) : EngineSession {
-        private val active = AtomicBoolean(true)
+        override val engineId: String = id
+        private val closing = AtomicBoolean(false)
 
-        fun updateStats(bytesIn: Long, bytesOut: Long) {
-            if (active.get()) {
-                onEvent(EngineEvent.Statistics(bytesIn, bytesOut))
-            }
-        }
-
-        fun terminate() {
-            active.set(false)
-        }
-
-        val isActive: Boolean get() = active.get()
+        internal fun beginClose(): Boolean = closing.compareAndSet(false, true)
+        val isActive: Boolean get() = backendActive.get() && !closing.get()
     }
 }
