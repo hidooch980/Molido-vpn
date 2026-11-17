@@ -47,6 +47,8 @@ object ServerCountryClassifier {
         val label = explicitLabel?.trim().orEmpty()
         if (label.isBlank()) return UNKNOWN
         val normalized = label.lowercase()
+        val byFlag = countries.firstOrNull { country -> label.contains(country.flag) }
+        if (byFlag != null) return byFlag
         val byName = countries.firstOrNull { country ->
             normalized.contains(country.nameEn.lowercase()) ||
                 normalized.contains(country.nameFa.lowercase())
