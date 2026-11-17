@@ -101,9 +101,23 @@ class WireGuardEngineAdapter(
             onEvent(EngineEvent.TransportReady)
             return session
         } catch (error: LinkageError) {
+            safelyStopTunnel(tunnel)
             throw IllegalStateException("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", error)
         } catch (error: Exception) {
-            throw error
+            safelyStopTunnel(tunnel)
+            throw IllegalStateException("WIREGUARD_START_FAILED", error)
+        }
+    }
+
+    private suspend fun safelyStopTunnel(tunnel: Tunnel) {
+        try {
+            withContext(Dispatchers.IO) {
+                if (backend.getState(tunnel) == State.UP) {
+                    backend.setState(tunnel, State.DOWN, null)
+                }
+            }
+        } catch (_: Throwable) {
+            // Startup already failed; never expose native exception details.
         }
     }
 
