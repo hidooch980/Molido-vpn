@@ -353,6 +353,33 @@ class ConnectionCoordinatorTest {
         }
     }
 
+    private class CountingTestAdapter : EngineAdapter {
+        override val id: String = "counting-test"
+        override val displayName: String = "Counting test adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var connectCalls = 0
+        var disconnectCalls = 0
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            connectCalls++
+            onEvent(EngineEvent.TransportReady)
+            return object : EngineSession {
+                override val engineId: String = id
+            }
+        }
+
+        override suspend fun disconnect(session: EngineSession) {
+            disconnectCalls++
+        }
+    }
+
     private class TestReadyAdapter : EngineAdapter {
         override val id: String = "test-ready"
         override val displayName: String = "Test-only ready adapter"
