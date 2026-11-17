@@ -796,6 +796,13 @@ fun ServersTab(
                 }
             }
             items(countryServers, key = { it.id }) { server ->
+            val latencyLabel = server.measurement.latencyMillis?.let { "$it ms" }
+                ?: if (isPersian) "اندازه‌گیری نشده" else "Not measured"
+            val scoreLabel = if (server.score.eligible) {
+                "${strings.scoreLabel} ${server.score.score.toInt()}"
+            } else {
+                if (isPersian) "بدون امتیاز تأییدشده" else "No verified score"
+            }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -827,7 +834,7 @@ fun ServersTab(
                                 }
                             }
                             Text(
-                                "${server.engineId.uppercase()} • ${server.measurement.latencyMillis} ms",
+                                "${server.engineId.uppercase()} • $latencyLabel",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF94A3B8)
                             )
@@ -841,8 +848,8 @@ fun ServersTab(
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            "${strings.scoreLabel} ${server.score.score.toInt()}",
-                            color = Color(0xFF38BDF8),
+                            scoreLabel,
+                            color = if (server.score.eligible) Color(0xFF38BDF8) else Color(0xFF94A3B8),
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
