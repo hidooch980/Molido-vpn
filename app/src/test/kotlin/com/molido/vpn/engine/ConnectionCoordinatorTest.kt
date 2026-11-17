@@ -145,6 +145,34 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun networkHandoverTriggersFreshEgressVerificationAndFailsClosedOnFailure() = runTest {
+        val verifier = MockTrafficVerifier(simulatedSuccess = true)
+        val adapter = TestReadyAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = verifier,
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+
+        // Simulate the new underlying network failing to carry VPN egress.
+        verifier.simulatedSuccess = false
+        verifier.simulatedError = "HANDOVER_EGRESS_FAILED"
+        coordinator.verifyActiveTunnelAfterNetworkChange()
+        advanceUntilIdle()
+
+        val state = coordinator.state.value
+        assertTrue("Failed handover verification must not remain Connected: $state", state is ConnectionState.Failed)
+        assertEquals("HANDOVER_EGRESS_FAILED", (state as ConnectionState.Failed).reasonCode)
+    }
+
+    @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
         val adapter = TestReadyAdapter()
