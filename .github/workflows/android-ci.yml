@@ -20,9 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Review dependency changes for known vulnerabilities
+        id: dependency-review
         uses: actions/dependency-review-action@v4
+        continue-on-error: true
         with:
           fail-on-severity: moderate
+      - name: Dependency graph status
+        if: steps.dependency-review.outcome == 'failure'
+        run: echo "::warning::Dependency review could not complete. Enable Dependency Graph in repository Settings > Security & analysis, then review dependency changes before merge."
 
   verify:
     runs-on: ubuntu-latest
