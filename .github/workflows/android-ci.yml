@@ -46,9 +46,8 @@ jobs:
       - name: Run Android lint
         if: always() && !cancelled()
         run: ./gradlew lintDebug --stacktrace
-      - name: Build debug APK (CI validation only)
-        if: success()
-        run: ./gradlew assembleDebug --stacktrace
+      # Instrumentation tests compile and install their app target only inside the ephemeral CI emulator.
+      # No standalone APK is assembled, retained, uploaded, or distributed by this workflow.
       - name: Android Keystore instrumentation tests
         if: success()
         uses: reactivecircus/android-emulator-runner@v2
@@ -71,11 +70,3 @@ jobs:
             build/reports/
           if-no-files-found: ignore
           retention-days: 14
-      - name: Upload debug APK (not a release)
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: molido-vpn-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 7
