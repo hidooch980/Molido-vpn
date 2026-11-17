@@ -11,8 +11,14 @@ class ServerCountryClassifierTest {
         assertEquals("US", ServerCountryClassifier.resolve("🇺🇸 Premium Node").code)
         assertEquals("US", ServerCountryClassifier.resolve("New York US 01").code)
         assertEquals("GB", ServerCountryClassifier.resolve("UK server").code)
+        assertEquals("AE", ServerCountryClassifier.resolve("Dubai UAE 02").code)
+        assertEquals("TR", ServerCountryClassifier.resolve("Istanbul Türkiye").code)
         assertEquals("ZZ", ServerCountryClassifier.resolve("GitHub Free Node").code)
         assertEquals("ZZ", ServerCountryClassifier.resolve("de-fast.example.net").code)
+        assertEquals("ZZ", ServerCountryClassifier.resolve("node-us-01.example.net").code)
+        assertEquals("ZZ", ServerCountryClassifier.resolve("SUS-01").code)
+        assertEquals("ZZ", ServerCountryClassifier.resolve("VLESS REALITY TLS").code)
+        assertEquals("ZZ", ServerCountryClassifier.resolve(null).code)
     }
 
     @Test
