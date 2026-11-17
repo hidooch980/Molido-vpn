@@ -17,7 +17,6 @@ import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
 import com.molido.vpn.engine.warp.CleanIpResult
 import com.molido.vpn.engine.warp.CleanIpScanner
-import com.molido.vpn.engine.warp.WarpEngineAdapter
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.engine.xray.XrayEngineAdapter
 import com.molido.vpn.importer.ConfigImporter
@@ -31,7 +30,6 @@ import com.molido.vpn.policy.SplitTunnelManager
 import com.molido.vpn.update.UpdateInfo
 import com.molido.vpn.update.UpdateManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
-import com.molido.vpn.vpn.MolidoVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -78,7 +76,6 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter(application)
-    private val warpAdapter = WarpEngineAdapter(application)
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
@@ -87,18 +84,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
             xrayAdapter.id to xrayAdapter,
-            warpAdapter.id to warpAdapter
         ),
-        onVpnInterfaceRequested = { engineId, config ->
-            val context = getApplication<Application>()
-            val configText = String(config.opaquePayload, Charsets.UTF_8)
-            MolidoVpnService.startService(context, engineId, configText)
-            true
-        },
-        onVpnInterfaceTornDown = {
-            val context = getApplication<Application>()
-            MolidoVpnService.stopService(context)
-        }
+        // The legacy app-owned VPN service was removed. Keep the main branch
+        // fail-closed until the GoBackend-only integration is merged and accepted.
+        onVpnInterfaceRequested = { _, _ -> false },
+        onVpnInterfaceTornDown = { }
     )
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
