@@ -17,6 +17,11 @@ class DohDnsResolverTest {
 
         assertEquals("9.9.9.9", DohDnsResolver.getProvider("quad9").primaryIp)
         assertEquals("94.140.14.14", DohDnsResolver.getProvider("adguard").primaryIp)
+
+        assertEquals("https://cloudflare-dns.com/dns-query", DohDnsResolver.getProvider("cloudflare").dohEndpoint)
+        assertEquals("https://dns.google/dns-query", DohDnsResolver.getProvider("google").dohEndpoint)
+        assertEquals("https://dns.quad9.net/dns-query", DohDnsResolver.getProvider("quad9").dohEndpoint)
+        assertEquals("https://dns.adguard-dns.com/dns-query", DohDnsResolver.getProvider("adguard").dohEndpoint)
     }
 
     @Test
