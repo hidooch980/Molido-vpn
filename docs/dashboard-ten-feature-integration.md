@@ -4,7 +4,7 @@ This document is the implementation and acceptance contract for the ten dashboar
 
 ## Current implementation in this branch
 
-1. **Connection control** — premium status UI is present. WireGuard adapter now fails closed and cannot emit a fake transport-ready event until GoBackend, single-TUN ownership, protected sockets, and packet forwarding are implemented.
+1. **Connection control** — premium status UI is present. WireGuard adapter now uses the pinned official GoBackend, which owns and establishes the TUN and protects its native UDP sockets. External egress verification remains required before the app reports a verified connection; physical-device packet-path acceptance is still pending.
 2. **Exit IP and location** — the verifier now requires Android's active network to expose `TRANSPORT_VPN`, opens the HTTPS egress probe on that exact `Network`, validates the returned IP literal, and never reports the probe server's IP as the user's IP. Geolocation is not integrated.
 3. **Network monitor** — connection latency and engine byte counters are represented. Packet loss, jitter, throughput, and long-window stability still need real probes and device tests.
 4. **Security center** — DNS provider and Kill Switch preferences exist. DNS leak, IPv6 leak, lockdown, and process-death behavior are not certified.
@@ -29,9 +29,9 @@ This document is the implementation and acceptance contract for the ten dashboar
 
 ### WireGuard
 - Pin and audit the official WireGuard Android library version and license.
-- Integrate GoBackend as the sole owner of its TUN interface; do not call `VpnService.Builder.establish()` in parallel for that tunnel.
-- Verify the exact upstream manifest/service requirements.
-- Pass the real socket-protection callback to GoBackend for every tunnel socket.
+- Integrate GoBackend as the sole owner of its TUN interface; do not call `VpnService.Builder.establish()` in parallel for that tunnel. This branch declares the upstream GoBackend VPN service and removes the app's previous bare-TUN service from the manifest.
+- Verify the exact upstream manifest/service requirements (manifest entry added; merged-manifest and runtime validation still required).
+- Verify GoBackend's own native socket protection path (`VpnService.protect()` for its IPv4 and IPv6 sockets) on-device; the adapter callback is not used by GoBackend.
 - Verify real packet forwarding, IPv4 and IPv6 routes, DNS, public egress IP, reconnect, handover, process death, sleep/wake, and long-duration stability on a physical Android device with a valid reachable profile.
 
 ### Remaining modules
