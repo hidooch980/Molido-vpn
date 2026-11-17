@@ -157,6 +157,27 @@ class EncryptedConfigStore(context: Context) {
     }
 
     @Synchronized
+    fun saveDisabledSubscriptions(urls: Set<String>) {
+        val normalized = urls.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        val encrypted = encryptText(normalized.joinToString("\\n"), DISABLED_SUBSCRIPTIONS_AAD)
+        check(prefs.edit().putString(KEY_DISABLED_SUBSCRIPTIONS_ENCRYPTED, encrypted).commit()) {
+            "SUBSCRIPTION_STORAGE_FAILED"
+        }
+    }
+
+    @Synchronized
+    fun getDisabledSubscriptions(): Set<String> {
+        val stored = prefs.getString(KEY_DISABLED_SUBSCRIPTIONS_ENCRYPTED, null) ?: return emptySet()
+        return try {
+            decryptText(stored, DISABLED_SUBSCRIPTIONS_AAD)
+                .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        } catch (_: Exception) {
+            prefs.edit().remove(KEY_DISABLED_SUBSCRIPTIONS_ENCRYPTED).commit()
+            emptySet()
+        }
+    }
+
+    @Synchronized
     fun saveSubscriptionSnapshot(snapshotJson: String) {
         require(snapshotJson.length <= MAX_SNAPSHOT_CHARS) { "SUBSCRIPTION_SNAPSHOT_TOO_LARGE" }
         val encrypted = encryptText(snapshotJson, SNAPSHOT_AAD)
@@ -207,6 +228,7 @@ class EncryptedConfigStore(context: Context) {
         private const val KEY_SPLIT_APPS = "split_tunnel_apps"
         private const val KEY_SUBSCRIPTIONS = "subscriptions_urls"
         private const val KEY_SUBSCRIPTIONS_ENCRYPTED = "subscriptions_urls_enc"
+        private const val KEY_DISABLED_SUBSCRIPTIONS_ENCRYPTED = "subscriptions_urls_disabled_enc"
         private const val KEY_SUBSCRIPTION_SNAPSHOT = "subscription_snapshot_enc"
         private const val MAX_SNAPSHOT_CHARS = 2 * 1024 * 1024
         private const val KEY_ALIAS = "molido.vpn.profile.aes256gcm.v1"
@@ -218,6 +240,7 @@ class EncryptedConfigStore(context: Context) {
         private const val GCM_TAG_LENGTH_BYTES = GCM_TAG_LENGTH_BITS / 8
         private val AAD = "MolidoVPN/active-profile/v1".toByteArray(Charsets.UTF_8)
         private val SUBSCRIPTIONS_AAD = "MolidoVPN/subscription-urls/v1".toByteArray(Charsets.UTF_8)
+        private val DISABLED_SUBSCRIPTIONS_AAD = "MolidoVPN/subscription-disabled-urls/v1".toByteArray(Charsets.UTF_8)
         private val SNAPSHOT_AAD = "MolidoVPN/subscription-snapshot/v1".toByteArray(Charsets.UTF_8)
     }
 }
