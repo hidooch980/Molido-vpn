@@ -44,6 +44,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     // Official WireGuard Android userspace backend, pinned Apache-2.0 release.
     implementation("com.wireguard.android:tunnel:1.0.20260102")
     implementation("androidx.compose.ui:ui")
