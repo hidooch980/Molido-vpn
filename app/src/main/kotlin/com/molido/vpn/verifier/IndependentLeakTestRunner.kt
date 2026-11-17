@@ -67,14 +67,15 @@ class IndependentLeakTestRunner(context: Context) {
         fetchText(network, URL("https://ipv6.bash.ws/myip/test/$testId"), 128)
 
         // Follow bash.ws's documented two-phase flow: resolve unique numbered
-        // subdomains through Android's system resolver, then fetch authoritative
+        // subdomains explicitly on the same VPN Network (not the process default),
+        // then fetch authoritative
         // resolver observations for the same test ID.
         for (index in 1..10) {
             if (connectivity.activeNetwork != network) {
                 return@withContext DnsResolverObservation(false, emptyList(), errorCode = "VPN_NETWORK_CHANGED")
             }
             try {
-                InetAddress.getAllByName("$index.$testId.bash.ws")
+                network.getAllByName("$index.$testId.bash.ws")
             } catch (_: Exception) {
                 // The probe lookup may be filtered or return no address; the authoritative
                 // DNS server can still have recorded the recursive resolver query.
