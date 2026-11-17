@@ -46,8 +46,6 @@ jobs:
       - name: Run Android lint
         if: always() && !cancelled()
         run: ./gradlew lintDebug --stacktrace
-      # Instrumentation tests compile and install their app target only inside the ephemeral CI emulator.
-      # No standalone APK is assembled, retained, uploaded, or distributed by this workflow.
       # Compile Android instrumentation test sources only. Do not assemble, install,
       # upload, or distribute any APK; physical Keystore behavior remains unverified.
       - name: Compile Android instrumentation test sources (no APK)
