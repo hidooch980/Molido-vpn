@@ -39,6 +39,26 @@ class WireGuardConfigParserTest {
     }
 
     @Test
+    fun fullTunnelPolicyRequiresBothIpv4AndIpv6DefaultRoutes() {
+        assertEquals(null, WireGuardTunnelPolicy.validateFullTunnel(validConfig))
+        assertEquals("IPV6_DEFAULT_ROUTE_REQUIRED", WireGuardTunnelPolicy.validateFullTunnel(validConfig.replace(", ::/0", "")))
+        assertEquals("IPV4_DEFAULT_ROUTE_REQUIRED", WireGuardTunnelPolicy.validateFullTunnel(validConfig.replace("0.0.0.0/0, ", "")))
+    }
+
+    @Test
+    fun dnsOverrideReplacesInterfaceResolverAndRejectsHostnames() {
+        val overridden = WireGuardTunnelPolicy.applyDnsServers(validConfig, listOf("1.1.1.1", "1.0.0.1"))
+        assertTrue(overridden.contains("DNS = 1.1.1.1, 1.0.0.1"))
+        assertTrue(!overridden.contains("DNS = 1.1.1.1, 8.8.8.8"))
+        try {
+            WireGuardTunnelPolicy.applyDnsServers(validConfig, listOf("dns.example"))
+            fail("Hostnames must not be accepted as resolver IPs")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("DNS_OVERRIDE_INVALID", error.message)
+        }
+    }
+
+    @Test
     fun parseRejectsEmptyConfig() {
         try {
             WireGuardConfigParser.parse("")

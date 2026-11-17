@@ -11,17 +11,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,7 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -46,19 +34,20 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.VpnLock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -67,47 +56,43 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
@@ -116,18 +101,20 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.data.ServerCountryClassifier
+import com.molido.vpn.importer.SubscriptionRefreshScheduler
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.policy.KillSwitchManager
 import com.molido.vpn.ui.AppLanguage
 import com.molido.vpn.ui.AppStrings
 import com.molido.vpn.ui.Localization
-import com.molido.vpn.ui.LocationItem
 import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
+import com.molido.vpn.verifier.AddressFamilyProbe
+import com.molido.vpn.verifier.DnsResolverObservation
+import com.molido.vpn.dns.DohProbeObservation
 import com.molido.vpn.ui.VpnViewModel
-import com.molido.vpn.update.UpdateInfo
-import com.molido.vpn.update.UpdateManager
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -137,6 +124,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SubscriptionRefreshScheduler.schedule(applicationContext)
         setContent {
             MolidoVpnTheme {
                 val language by viewModel.language.collectAsState()
@@ -180,20 +168,18 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val diagnostics by viewModel.diagnostics.collectAsState()
     val selectedEngineId by viewModel.selectedEngineId.collectAsState()
     val servers by viewModel.servers.collectAsState()
-    val locations by viewModel.locations.collectAsState()
-    val selectedLocation by viewModel.selectedLocation.collectAsState()
     val activeConfigText by viewModel.activeConfigText.collectAsState()
     val killSwitchEnabled by viewModel.killSwitchEnabled.collectAsState()
     val selectedDns by viewModel.selectedDns.collectAsState()
+    val isRunningLeakDiagnostics by viewModel.isRunningLeakDiagnostics.collectAsState()
+    val addressFamilyDiagnostics by viewModel.addressFamilyDiagnostics.collectAsState()
+    val dnsResolverObservation by viewModel.dnsResolverObservation.collectAsState()
+    val dohProbeObservation by viewModel.dohProbeObservation.collectAsState()
     val splitApps by viewModel.splitApps.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
-    val isPinging by viewModel.isPinging.collectAsState()
-    val isScanningCleanIps by viewModel.isScanningCleanIps.collectAsState()
-    val cleanIps by viewModel.cleanIps.collectAsState()
-    val updateInfo by viewModel.updateInfo.collectAsState()
-    val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
-    val updateDownloadProgress by viewModel.updateDownloadProgress.collectAsState()
+    val subscriptionUrls by viewModel.subscriptionUrls.collectAsState()
+    val disabledSubscriptionUrls by viewModel.disabledSubscriptionUrls.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -208,88 +194,6 @@ fun MainAppScreen(viewModel: VpnViewModel) {
         }
     }
 
-    if (updateInfo?.hasUpdate == true) {
-        val info = updateInfo!!
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissUpdateDialog() },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = Color(0xFF35D6CD))
-                    Spacer(Modifier.width(8.dp))
-                    Text(strings.updateAvailable, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                }
-            },
-            text = {
-                Column {
-                    Text(
-                        "${strings.currentVersionLabel}: v${info.currentVersion} ➔ v${info.latestVersion}",
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF10B981),
-                        fontSize = 14.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    if (info.releaseNotes.isNotBlank()) {
-                        Text(info.releaseNotes, style = MaterialTheme.typography.bodySmall, color = Color(0xFFE2E8F0))
-                    }
-                    if (updateDownloadProgress != null) {
-                        Spacer(Modifier.height(14.dp))
-                        val progress = updateDownloadProgress ?: 0f
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = Color(0xFF35D6CD),
-                            trackColor = Color(0xFF1A3942)
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "${strings.downloadingUpdate} ${(progress * 100).toInt()}%",
-                            color = Color(0xFF35D6CD),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val url = info.downloadUrl
-                        if (!url.isNullOrBlank()) {
-                            viewModel.startInAppUpdate(context, url)
-                        } else {
-                            UpdateManager.openDownloadPage(context, null)
-                            viewModel.dismissUpdateDialog()
-                        }
-                    },
-                    enabled = updateDownloadProgress == null,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
-                ) {
-                    if (updateDownloadProgress != null) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color(0xFF061418),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(strings.downloadingUpdate, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
-                    } else {
-                        Text(strings.updateDownloadAction, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                    Text(strings.updateLaterAction, color = Color(0xFF94A3B8))
-                }
-            },
-            containerColor = Color(0xFF10242D),
-            shape = RoundedCornerShape(16.dp)
-        )
-    }
-
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = true,
@@ -299,113 +203,78 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 drawerContentColor = Color(0xFFE8F7F8)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color(0xFF10242D))
-                                .border(1.dp, Color(0xFF35D6CD), RoundedCornerShape(14.dp)),
+                            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp))
+                                .background(Color(0xFF073B42)).border(1.dp, Color(0xFF20D6D2), RoundedCornerShape(15.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.VpnLock,
-                                contentDescription = null,
-                                tint = Color(0xFF35D6CD),
-                                modifier = Modifier.size(26.dp)
-                            )
+                            Icon(Icons.Default.VpnLock, contentDescription = null, tint = Color(0xFF36E0D5), modifier = Modifier.size(26.dp))
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text(
-                                "MolidoVPN",
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 20.sp
-                            )
-                            Text(
-                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی و امن" else "Private & Secure Connection",
-                                color = Color(0xFF35D6CD),
-                                fontSize = 11.sp
-                            )
+                            Text("MOLIDO", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, letterSpacing = 2.sp)
+                            Text("VPN  •  AI SECURITY", color = Color(0xFF48CFC8), fontSize = 10.sp, letterSpacing = 1.sp)
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        if (language == AppLanguage.PERSIAN) "منوی اصلی" else "MAIN MENU",
-                        color = Color(0xFF6F9299),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Spacer(Modifier.height(14.dp))
+                    Text(if (language == AppLanguage.PERSIAN) "منوی اصلی" else "MAIN MENU", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     NavigationDrawerItem(
-                        label = { Text(strings.tabDashboard, fontWeight = FontWeight.SemiBold) },
+                        label = { Text(if (language == AppLanguage.PERSIAN) "داشبورد" else "Dashboard", fontWeight = FontWeight.SemiBold) },
                         selected = selectedTab == 0,
-                        onClick = {
-                            selectedTab = 0
-                            scope.launch { drawerState.close() }
-                        },
+                        onClick = { selectedTab = 0; scope.launch { drawerState.close() } },
                         icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF10242D),
-                            selectedIconColor = Color(0xFF35D6CD),
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40),
+                            selectedIconColor = Color(0xFF42E2D7),
                             selectedTextColor = Color.White,
-                            unselectedIconColor = Color(0xFF6F9299),
+                            unselectedIconColor = Color(0xFF91AEB2),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(strings.tabLocations, fontWeight = FontWeight.SemiBold) },
+                        label = { Text(if (language == AppLanguage.PERSIAN) "سرورها و پروفایل‌ها" else "Servers & Profiles") },
                         selected = selectedTab == 1,
-                        onClick = {
-                            selectedTab = 1
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = { Icon(Icons.Default.Public, contentDescription = null) },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF10242D),
-                            selectedIconColor = Color(0xFF35D6CD),
-                            selectedTextColor = Color.White,
-                            unselectedIconColor = Color(0xFF6F9299),
+                        onClick = { selectedTab = 1; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(strings.tabSettings) },
+                        label = { Text(if (language == AppLanguage.PERSIAN) "امنیت و تنظیمات" else "Security & Settings") },
                         selected = selectedTab == 2,
-                        onClick = {
-                            selectedTab = 2
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF10242D),
-                            selectedIconColor = Color(0xFF35D6CD),
-                            selectedTextColor = Color.White,
-                            unselectedIconColor = Color(0xFF6F9299),
+                        onClick = { selectedTab = 2; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(strings.updateTitle) },
-                        selected = false,
-                        onClick = {
-                            viewModel.checkForUpdates(silent = false)
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = { Icon(Icons.Default.SystemUpdate, contentDescription = null) },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF10242D),
-                            selectedIconColor = Color(0xFF35D6CD),
-                            selectedTextColor = Color.White,
-                            unselectedIconColor = Color(0xFF35D6CD),
+                        label = { Text(if (language == AppLanguage.PERSIAN) "مرکز امکانات" else "Feature Center") },
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3; scope.launch { drawerState.close() } },
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
+                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
+                    Spacer(Modifier.height(12.dp))
+                    Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
+                    DrawerPlannedItem(Icons.Default.AutoAwesome, if (language == AppLanguage.PERSIAN) "مسیریابی هوشمند AI" else "AI Smart Routing")
+                    DrawerPlannedItem(Icons.Default.SystemUpdate, if (language == AppLanguage.PERSIAN) "به‌روزرسانی هسته‌ها" else "Core Updates")
+                    Spacer(Modifier.height(20.dp))
+                    Text("PREMIUM • PRIVATE • SECURE", color = Color(0xFF3ABFB9), fontSize = 10.sp, letterSpacing = 1.sp)
                 }
             }
         }
@@ -415,30 +284,23 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 TopAppBar(
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                Icons.Default.Menu,
-                                contentDescription = if (language == AppLanguage.PERSIAN) "باز کردن منو" else "Open menu",
-                                tint = Color(0xFF35D6CD)
-                            )
+                            Icon(Icons.Default.Menu, contentDescription = if (language == AppLanguage.PERSIAN) "باز کردن منو" else "Open menu", tint = Color(0xFF43DCD3))
                         }
                     },
                     title = {
                         Column {
                             Text(
                                 when (selectedTab) {
-                                    1 -> strings.tabLocations
-                                    2 -> strings.tabSettings
-                                    else -> "MolidoVPN"
+                                    1 -> if (language == AppLanguage.PERSIAN) "سرورها" else "Servers"
+                                    2 -> if (language == AppLanguage.PERSIAN) "امنیت" else "Security"
+                                    3 -> if (language == AppLanguage.PERSIAN) "مرکز امکانات" else "Feature Center"
+                                    else -> "MolidoVPN AI"
                                 },
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 19.sp,
-                                color = Color.White
+                                fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color.White
                             )
                             Text(
-                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی و امن" else "Private & Secure Connection",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF35D6CD),
-                                fontSize = 10.sp
+                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی، کنترل هوشمند" else "Private connection • intelligent control",
+                                style = MaterialTheme.typography.bodySmall, color = Color(0xFF48CFC8), fontSize = 10.sp
                             )
                         }
                     },
@@ -446,141 +308,81 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         IconButton(onClick = {
                             val nextLang = if (language == AppLanguage.PERSIAN) AppLanguage.ENGLISH else AppLanguage.PERSIAN
                             viewModel.setLanguage(nextLang)
-                        }) {
-                            Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF35D6CD))
-                        }
-                        IconButton(onClick = {
-                            if (selectedTab == 1) viewModel.refreshLocations() else viewModel.refreshServers()
-                        }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF6F9299))
+                        }) { Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF43DCD3)) }
+                        IconButton(onClick = { viewModel.refreshServers() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFFB4CBCD))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF07131A))
                 )
             },
-            bottomBar = {
-                NavigationBar(
-                    containerColor = Color(0xFF07131A),
-                    contentColor = Color(0xFFE8F7F8),
-                    tonalElevation = 8.dp
-                ) {
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Home, contentDescription = strings.tabDashboard) },
-                        label = {
-                            Text(
-                                strings.tabDashboard,
-                                fontSize = 12.sp,
-                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF35D6CD),
-                            selectedTextColor = Color(0xFF35D6CD),
-                            unselectedIconColor = Color(0xFF6F9299),
-                            unselectedTextColor = Color(0xFF6F9299),
-                            indicatorColor = Color(0xFF10242D)
-                        )
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.Public, contentDescription = strings.tabLocations) },
-                        label = {
-                            Text(
-                                strings.tabLocations,
-                                fontSize = 12.sp,
-                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF35D6CD),
-                            selectedTextColor = Color(0xFF35D6CD),
-                            unselectedIconColor = Color(0xFF6F9299),
-                            unselectedTextColor = Color(0xFF6F9299),
-                            indicatorColor = Color(0xFF10242D)
-                        )
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = strings.tabSettings) },
-                        label = {
-                            Text(
-                                strings.tabSettings,
-                                fontSize = 12.sp,
-                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF35D6CD),
-                            selectedTextColor = Color(0xFF35D6CD),
-                            unselectedIconColor = Color(0xFF6F9299),
-                            unselectedTextColor = Color(0xFF6F9299),
-                            indicatorColor = Color(0xFF10242D)
-                        )
-                    )
-                }
-            },
             containerColor = Color(0xFF07131A)
         ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 when (selectedTab) {
                     0 -> ConnectTab(
-                        strings = strings,
-                        connectionState = connectionState,
-                        diagnostics = diagnostics,
+                        strings = strings, connectionState = connectionState, diagnostics = diagnostics,
+                        isPersian = language == AppLanguage.PERSIAN,
+                        killSwitchEnabled = killSwitchEnabled,
                         selectedEngine = selectedEngineId,
-                        selectedLocation = selectedLocation,
-                        currentLanguage = language,
                         onSelectEngine = { viewModel.setSelectedEngine(it) },
-                        onOpenLocations = { selectedTab = 1 },
                         onConnect = { viewModel.onConnectClicked(context) },
                         onDisconnect = { viewModel.onDisconnectClicked() }
                     )
-                    1 -> LocationsTab(
-                        strings = strings,
-                        currentLanguage = language,
-                        locations = locations,
-                        selectedLocation = selectedLocation,
-                        onSelectLocation = { viewModel.selectLocation(it) },
-                        onRefresh = { viewModel.refreshLocations() }
+                    1 -> ServersTab(
+                        strings = strings, servers = servers, isFetching = isFetchingCommunity,
+                        isPersian = language == AppLanguage.PERSIAN,
+                        subscriptionUrls = subscriptionUrls,
+                        disabledSubscriptionUrls = disabledSubscriptionUrls,
+                        onSetSubscriptionEnabled = { url, enabled -> viewModel.setSubscriptionEnabled(url, enabled) },
+                        onAddSubscription = { viewModel.addSubscription(it) },
+                        onRemoveSubscription = { viewModel.removeSubscription(it) },
+                        onRefreshSubscriptions = { viewModel.refreshSubscriptionsNow() },
+                        onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
+                        onSelectServer = { viewModel.selectServer(it) },
+                        onImportClipboard = {
+                            val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                            if (text.isNotBlank()) viewModel.importFromRawText(text)
+                            else Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                        }
                     )
+                    3 -> DashboardFeatureCenter(language = language)
                     2 -> SecuritySettingsTab(
-                        strings = strings,
-                        currentLanguage = language,
+                        strings = strings, currentLanguage = language,
                         onSelectLanguage = { viewModel.setLanguage(it) },
-                        killSwitch = killSwitchEnabled,
-                        onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
+                        killSwitch = killSwitchEnabled, onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
                         onOpenAndroidSettings = {
-                            try {
-                                context.startActivity(KillSwitchManager.createVpnSettingsIntent())
-                            } catch (_: Exception) {
-                                Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show()
-                            }
+                            try { context.startActivity(KillSwitchManager.createVpnSettingsIntent()) }
+                            catch (_: Exception) { Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show() }
                         },
-                        selectedDns = selectedDns,
-                        onSelectDns = { viewModel.setDnsProvider(it) },
-                        splitApps = splitApps,
-                        installedApps = installedApps,
+                        selectedDns = selectedDns, onSelectDns = { viewModel.setDnsProvider(it) },
+                        isRunningLeakDiagnostics = isRunningLeakDiagnostics,
+                        addressFamilyDiagnostics = addressFamilyDiagnostics,
+                        dnsResolverObservation = dnsResolverObservation,
+                        dohProbeObservation = dohProbeObservation,
+                        onRunLeakDiagnostics = { viewModel.runIndependentLeakDiagnostics() },
+                        splitApps = splitApps, installedApps = installedApps,
                         onToggleApp = { viewModel.toggleAppExclusion(it) },
-                        activeConfigText = activeConfigText,
-                        onUpdateConfig = { viewModel.updateActiveConfig(it) },
-                        isScanningCleanIps = isScanningCleanIps,
-                        cleanIps = cleanIps,
-                        onScanCleanIps = { viewModel.scanCleanIps() },
-                        onApplyCleanIp = { viewModel.applyCleanIpToWarp(it) },
-                        isCheckingUpdate = isCheckingUpdate,
-                        onCheckUpdate = { viewModel.checkForUpdates(silent = false) }
+                        activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) }
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DrawerPlannedItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF54777D), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(title, color = Color(0xFF78969B), fontSize = 13.sp)
+        Spacer(Modifier.weight(1f))
+        Text("SOON", color = Color(0xFF54777D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -589,571 +391,277 @@ fun ConnectTab(
     strings: AppStrings,
     connectionState: ConnectionState,
     diagnostics: ConnectionDiagnostics,
+    isPersian: Boolean,
+    killSwitchEnabled: Boolean,
     selectedEngine: String,
-    selectedLocation: LocationItem,
-    currentLanguage: AppLanguage,
     onSelectEngine: (String) -> Unit,
-    onOpenLocations: () -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
+    val isVerified = connectionState is ConnectionState.Connected
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { Spacer(Modifier.height(4.dp)) }
-
-        // Status badge at top
         item {
-            StatusBadge(strings = strings, connectionState = connectionState)
-        }
-
-        // Location selector pill / card
-        item {
-            LocationSelectorCard(
-                strings = strings,
-                location = selectedLocation,
-                currentLanguage = currentLanguage,
-                onClick = onOpenLocations
-            )
-        }
-
-        // Big beautiful animated circular connect button in the center
-        item {
-            CircularConnectButton(
-                strings = strings,
-                connectionState = connectionState,
-                onConnect = onConnect,
-                onDisconnect = onDisconnect
-            )
-        }
-
-        // When connected: show real-time stats
-        item {
-            AnimatedVisibility(
-                visible = connectionState is ConnectionState.Connected,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                RealTimeStatsCard(
-                    strings = strings,
-                    diagnostics = diagnostics
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp)) {
+                Text(
+                    if (strings.appName == "MolidoVPN") "اتصال امن شما" else "Your secure connection",
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp
+                )
+                Text(
+                    if (strings.appName == "MolidoVPN") "وضعیت تونل و اطلاعات شبکه در یک نگاه" else "Tunnel and network status at a glance",
+                    color = Color(0xFF78999E), fontSize = 12.sp
                 )
             }
         }
-
-        // Protocol selector chips below
         item {
-            ProtocolSelector(
-                strings = strings,
-                selectedEngine = selectedEngine,
-                onSelectEngine = onSelectEngine
-            )
-        }
-
-        item { Spacer(Modifier.height(16.dp)) }
-    }
-}
-
-@Composable
-fun CircularConnectButton(
-    strings: AppStrings,
-    connectionState: ConnectionState,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isConnected = connectionState is ConnectionState.Connected
-    val isBusy = connectionState is ConnectionState.Preparing ||
-        connectionState is ConnectionState.Connecting ||
-        connectionState is ConnectionState.Verifying
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pulseTransition")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isBusy) 1.10f else if (isConnected) 1.05f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = if (isConnected) 0.5f else if (isBusy) 0.7f else 0.15f,
-        targetValue = if (isConnected || isBusy) 0.08f else 0.02f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
-
-    val accentColor = when {
-        isConnected -> Color(0xFF35D6CD)
-        isBusy -> Color(0xFFF59E0B)
-        else -> Color(0xFF35D6CD)
-    }
-
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier.size(200.dp)
-    ) {
-        // Outer animated pulsing glow
-        if (isConnected || isBusy) {
-            Box(
-                modifier = Modifier
-                    .size(196.dp)
-                    .graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                    }
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = pulseAlpha))
-            )
-        }
-
-        // Outer ring border
-        Box(
-            modifier = Modifier
-                .size(175.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF0B1E26))
-                .border(
-                    width = if (isConnected) 2.dp else 1.dp,
-                    color = if (isConnected) Color(0xFF35D6CD) else if (isBusy) Color(0xFFF59E0B) else Color(0xFF1A3942),
-                    shape = CircleShape
-                )
-        )
-
-        // Main circular button
-        Box(
-            modifier = Modifier
-                .size(146.dp)
-                .clip(CircleShape)
-                .background(
-                    if (isConnected) Brush.radialGradient(
-                        colors = listOf(Color(0xFF15444D), Color(0xFF10242D))
-                    ) else Brush.radialGradient(
-                        colors = listOf(Color(0xFF16323D), Color(0xFF0B1E26))
-                    )
-                )
-                .border(
-                    width = 2.dp,
-                    color = if (isConnected) Color(0xFF35D6CD) else if (isBusy) Color(0xFFF59E0B) else Color(0xFF1F4E58),
-                    shape = CircleShape
-                )
-                .clickable {
-                    if (isConnected || isBusy) onDisconnect() else onConnect()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B2028)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF15545A))
             ) {
-                if (isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(40.dp),
-                        color = Color(0xFFF59E0B),
-                        strokeWidth = 3.dp
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(18.dp).size(92.dp)
+                            .clip(RoundedCornerShape(50.dp)).background(Color(0xFF12B8B0).copy(alpha = 0.07f))
                     )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = if (isConnected) strings.disconnectAction else strings.connectAction,
-                        tint = if (isConnected) Color(0xFF35D6CD) else Color(0xFFE8F7F8),
-                        modifier = Modifier.size(44.dp)
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (strings.appName == "MolidoVPN") "وضعیت محافظت" else "PROTECTION STATUS", color = Color(0xFF9BB9BC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (isVerified) Color(0xFF0C594F) else Color(0xFF493A20)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                Text(if (isVerified) "VERIFIED" else "NOT CONNECTED", color = if (isVerified) Color(0xFF5BE0BD) else Color(0xFFFFCF70), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        StatusCard(strings, connectionState, selectedEngine, onConnect, onDisconnect)
+                    }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                DashboardMetricCard(
+                    modifier = Modifier.weight(1f),
+                    title = if (strings.appName == "MolidoVPN") "IP خروجی" else "EXIT IP",
+                    value = diagnostics.egressIp ?: "—",
+                    detail = if (diagnostics.egressIp != null) "HTTPS egress verified" else if (isVerified) "IP هنوز تأیید نشده" else "پس از اتصال تأییدشده",
+                    icon = Icons.Default.Security
+                )
+                DashboardMetricCard(
+                    modifier = Modifier.weight(1f),
+                    title = if (strings.appName == "MolidoVPN") "موقعیت سرور" else "SERVER LOCATION",
+                    value = "—",
+                    detail = "داده واقعی هنوز موجود نیست",
+                    icon = Icons.Default.Language
+                )
+            }
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(if (strings.appName == "MolidoVPN") "عملکرد شبکه" else "NETWORK PERFORMANCE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        DashboardMetricCard(Modifier.weight(1f), "PING", diagnostics.lastLatencyMillis?.takeIf { isVerified }?.let { "$it ms" } ?: "—", "اندازه‌گیری واقعی", Icons.Default.Speed)
+                        DashboardMetricCard(Modifier.weight(1f), "DOWNLOAD", if (isVerified) "${diagnostics.bytesIn / 1024} KB" else "—", "ترافیک تونل", Icons.Default.CloudDownload)
+                        DashboardMetricCard(Modifier.weight(1f), "UPLOAD", if (isVerified) "${diagnostics.bytesOut / 1024} KB" else "—", "ترافیک تونل", Icons.Default.Sync)
+                    }
+                }
+            }
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
+                    DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
+                    DashboardSecurityRow(
+                        if (isPersian) "قفل سیستمی اندروید" else "Android Lockdown",
+                        if (isPersian) {
+                            if (killSwitchEnabled) "یادآور روشن است؛ وضعیت قفل اندروید تأیید نشده" else "یادآور خاموش است؛ وضعیت قفل اندروید نامشخص"
+                        } else {
+                            if (killSwitchEnabled) "Reminder enabled; system state unverified" else "Reminder off; system state unknown"
+                        },
+                        needsTest = true
                     )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = when {
-                        isConnected -> strings.disconnectAction
-                        isBusy -> strings.connecting
-                        else -> strings.connectAction
-                    },
-                    color = if (isConnected) Color(0xFF35D6CD) else Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
             }
         }
-    }
-}
-
-private data class StatusBadgeStyle(
-    val bg: Color,
-    val text: String,
-    val icon: ImageVector,
-    val color: Color
-)
-
-@Composable
-fun StatusBadge(strings: AppStrings, connectionState: ConnectionState) {
-    val style = when (connectionState) {
-        is ConnectionState.Connected -> StatusBadgeStyle(
-            Color(0xFF10242D),
-            strings.connectedVerified,
-            Icons.Default.CheckCircle,
-            Color(0xFF35D6CD)
-        )
-        is ConnectionState.Verifying -> StatusBadgeStyle(
-            Color(0xFF10242D),
-            strings.verifying,
-            Icons.Default.Lock,
-            Color(0xFFF59E0B)
-        )
-        is ConnectionState.Connecting -> StatusBadgeStyle(
-            Color(0xFF10242D),
-            "${strings.connecting} (${connectionState.engineId})",
-            Icons.Default.Speed,
-            Color(0xFF35D6CD)
-        )
-        is ConnectionState.Preparing -> StatusBadgeStyle(
-            Color(0xFF10242D),
-            strings.connecting,
-            Icons.Default.Info,
-            Color(0xFF94A3B8)
-        )
-        is ConnectionState.Recovering -> StatusBadgeStyle(
-            Color(0xFF10242D),
-            strings.verifying,
-            Icons.Default.Warning,
-            Color(0xFFF59E0B)
-        )
-        is ConnectionState.Failed -> StatusBadgeStyle(
-            Color(0xFF2D1515),
-            "${strings.failedPrefix}${connectionState.reasonCode}",
-            Icons.Default.Warning,
-            Color(0xFFEF4444)
-        )
-        is ConnectionState.Idle -> StatusBadgeStyle(
-            Color(0xFF10242D),
-            strings.disconnected,
-            Icons.Default.PowerSettingsNew,
-            Color(0xFF6F9299)
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(style.bg)
-            .border(1.dp, style.color.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = style.icon,
-                contentDescription = null,
-                tint = style.color,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                style.text,
-                color = style.color,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp
-            )
+        item {
+            SmartAutoEngineSelector(strings = strings, selectedEngine = selectedEngine, onSelect = onSelectEngine)
         }
+        item { Spacer(Modifier.height(18.dp)) }
     }
 }
 
 @Composable
-fun RealTimeStatsCard(
-    strings: AppStrings,
-    diagnostics: ConnectionDiagnostics
+private fun DashboardMetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    detail: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-        border = BorderStroke(1.dp, Color(0xFF1A3942))
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            LiveStatItem(
-                icon = Icons.Default.Speed,
-                label = strings.latencyLabel,
-                value = diagnostics.lastLatencyMillis?.let { "$it ms" } ?: "—",
-                color = Color(0xFF35D6CD)
-            )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(36.dp)
-                    .background(Color(0xFF1A3942))
-            )
-            LiveStatItem(
-                icon = Icons.Default.CloudDownload,
-                label = strings.downloadLabel,
-                value = "${diagnostics.bytesIn / 1024} KB",
-                color = Color(0xFF38BDF8)
-            )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(36.dp)
-                    .background(Color(0xFF1A3942))
-            )
-            LiveStatItem(
-                icon = Icons.Default.Sync,
-                label = strings.uploadLabel,
-                value = "${diagnostics.bytesOut / 1024} KB",
-                color = Color(0xFF20B8B2)
-            )
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = Color(0xFF42D8D0), modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(title, color = Color(0xFF8BAEB2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(detail, color = Color(0xFF718F94), fontSize = 9.sp)
         }
     }
 }
 
 @Composable
-fun LiveStatItem(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    color: Color
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(15.dp)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                label,
-                color = Color(0xFF6F9299),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
+private fun DashboardSecurityRow(title: String, detail: String, needsTest: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF36CFC7), modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color(0xFFE5F1F2), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(detail, color = Color(0xFF7F9DA1), fontSize = 10.sp)
         }
-        Text(
-            value,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp
-        )
+        Text(if (needsTest) "TEST" else "PENDING", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-fun ProtocolSelector(
+fun SmartAutoEngineSelector(
     strings: AppStrings,
     selectedEngine: String,
-    onSelectEngine: (String) -> Unit
+    onSelect: (String) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-        border = BorderStroke(1.dp, Color(0xFF1A3942))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = strings.enginesTitle,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = if (selectedEngine == "auto") "AUTO" else selectedEngine.uppercase(),
-                    color = Color(0xFF35D6CD),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-            }
+    Column {
+        Text(strings.enginesTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(8.dp))
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Auto connect Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelectEngine("auto") },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (selectedEngine == "auto") Color(0xFF0D323A) else Color(0xFF07131A)
-                ),
-                border = if (selectedEngine == "auto") BorderStroke(1.5.dp, Color(0xFF35D6CD)) else BorderStroke(1.dp, Color(0xFF1A3942))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = Color(0xFF35D6CD),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(strings.autoConnect, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
-                            Text(strings.autoConnectDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299), fontSize = 10.sp)
-                        }
-                    }
-                    if (selectedEngine == "auto") {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF35D6CD),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Protocol Chips: WARP, Xray, AmneziaWG, WireGuard
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    "warp" to "WARP",
-                    "xray" to "Xray",
-                    "amnezia" to "AmneziaWG",
-                    "wireguard" to "WireGuard"
-                ).forEach { (id, name) ->
-                    val isSelected = selectedEngine == id
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) Color(0xFF35D6CD) else Color(0xFF07131A))
-                            .border(
-                                1.dp,
-                                if (isSelected) Color(0xFF35D6CD) else Color(0xFF1A3942),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .clickable { onSelectEngine(id) }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = name,
-                            color = if (isSelected) Color(0xFF061418) else Color(0xFFE8F7F8),
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun LocationSelectorCard(
-    strings: AppStrings,
-    location: LocationItem,
-    currentLanguage: AppLanguage,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-        border = BorderStroke(1.dp, Color(0xFF1A3942))
-    ) {
-        Row(
+        // Smart Connect Card / Chip
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .clickable { onSelect("auto") },
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (selectedEngine == "auto") Color(0xFF0369A1).copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface
+            ),
+            border = if (selectedEngine == "auto") androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF38BDF8)) else null
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF07131A))
-                        .border(1.dp, Color(0xFF35D6CD).copy(alpha = 0.5f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        location.flagEmoji,
-                        fontSize = 22.sp
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = if (currentLanguage == AppLanguage.PERSIAN) location.countryFa else location.countryEn,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        text = if (currentLanguage == AppLanguage.PERSIAN) location.cityFa else location.cityEn,
-                        color = Color(0xFF6F9299),
-                        fontSize = 11.sp
-                    )
-                }
-            }
-
-            Box(
+            Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF35D6CD).copy(alpha = 0.15f))
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        strings.changeLocation,
-                        color = Color(0xFF35D6CD),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.width(4.dp))
                     Icon(
-                        imageVector = Icons.Default.Public,
+                        Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = Color(0xFF35D6CD),
-                        modifier = Modifier.size(14.dp)
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier.size(24.dp)
                     )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(strings.autoConnect, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                        Text(strings.autoConnectDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                    }
+                }
+                if (selectedEngine == "auto") {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
                 }
             }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Protocol Specific Chips
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = selectedEngine == "warp",
+                onClick = { onSelect("warp") },
+                label = { Text("WARP (Free)") },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = selectedEngine == "amnezia",
+                onClick = { onSelect("amnezia") },
+                label = { Text("AmneziaWG") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = selectedEngine == "xray",
+                onClick = { onSelect("xray") },
+                label = { Text("Xray / VLESS") },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = selectedEngine == "wireguard",
+                onClick = { onSelect("wireguard") },
+                label = { Text("WireGuard") },
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
 @Composable
-fun LocationsTab(
+fun ServersTab(
     strings: AppStrings,
-    currentLanguage: AppLanguage,
-    locations: List<LocationItem>,
-    selectedLocation: LocationItem,
-    onSelectLocation: (LocationItem) -> Unit,
-    onRefresh: () -> Unit
+    servers: List<ServerItem>,
+    isFetching: Boolean,
+    isPersian: Boolean,
+    subscriptionUrls: List<String>,
+    disabledSubscriptionUrls: Set<String>,
+    onSetSubscriptionEnabled: (String, Boolean) -> Unit,
+    onAddSubscription: (String) -> Unit,
+    onRemoveSubscription: (String) -> Unit,
+    onRefreshSubscriptions: () -> Unit,
+    onUpdateFromGithub: () -> Unit,
+    onSelectServer: (ServerItem) -> Unit,
+    onImportClipboard: () -> Unit
 ) {
+    var countryMenuExpanded by remember { mutableStateOf(false) }
+    var selectedCountryCode by remember { mutableStateOf("ALL") }
+    var subscriptionInput by remember { mutableStateOf("") }
+    val countries = remember(servers, isPersian) {
+        ServerCountryClassifier.sorted(servers.map { ServerCountryClassifier.resolve(it.country) }, isPersian)
+    }
+    val visibleServers = remember(servers, selectedCountryCode) {
+        servers.filter { selectedCountryCode == "ALL" || ServerCountryClassifier.resolve(it.country).code == selectedCountryCode }
+            .sortedWith(compareBy<ServerItem> { ServerCountryClassifier.resolve(it.country).code == "ZZ" }
+                .thenBy { ServerCountryClassifier.resolve(it.country).nameEn.lowercase() }
+                .thenByDescending { it.score.score })
+    }
+    val groupedServers = remember(visibleServers) { visibleServers.groupBy { ServerCountryClassifier.resolve(it.country) } }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1161,60 +669,139 @@ fun LocationsTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Spacer(Modifier.height(4.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column {
-                    Text(
-                        text = strings.selectLocation,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (currentLanguage == AppLanguage.PERSIAN)
-                            "لوکیشن مورد نظر را برای اتصال انتخاب کنید"
-                        else
-                            "Select your desired connection location",
-                        fontSize = 12.sp,
-                        color = Color(0xFF6F9299)
-                    )
+                // Update from GitHub community button
+                Button(
+                    onClick = onUpdateFromGithub,
+                    enabled = !isFetching,
+                    modifier = Modifier.weight(1.3f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                ) {
+                    if (isFetching) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.updatingGithub, fontSize = 11.sp)
+                    } else {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.updateFromGithub, fontSize = 12.sp)
+                    }
                 }
-                IconButton(onClick = onRefresh) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
-                        tint = Color(0xFF35D6CD)
+
+                OutlinedButton(
+                    onClick = onImportClipboard,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(strings.clipboardButton, fontSize = 12.sp)
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (isPersian) "مدیریت اشتراک‌ها" else "Subscription management", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = subscriptionInput,
+                        onValueChange = { subscriptionInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text(if (isPersian) "آدرس HTTPS اشتراک" else "HTTPS subscription URL") },
+                        placeholder = { Text("https://example.com/sub.txt") }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { onAddSubscription(subscriptionInput); subscriptionInput = "" },
+                            enabled = subscriptionInput.isNotBlank(),
+                            modifier = Modifier.weight(1f)
+                        ) { Text(if (isPersian) "ذخیره اشتراک" else "Add subscription") }
+                        OutlinedButton(onClick = onRefreshSubscriptions, modifier = Modifier.weight(1f)) {
+                            Text(if (isPersian) "به‌روزرسانی" else "Refresh")
+                        }
+                    }
+                    if (subscriptionUrls.isEmpty()) {
+                        Text(if (isPersian) "هنوز اشتراک سفارشی ثبت نشده است." else "No custom subscriptions saved.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        subscriptionUrls.forEach { url ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                val enabled = url !in disabledSubscriptionUrls
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(url, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                    Text(
+                                        if (isPersian) { if (enabled) "فعال" else "غیرفعال" }
+                                        else { if (enabled) "Enabled" else "Disabled" },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (enabled) Color(0xFF34D399) else Color(0xFFFBBF24)
+                                    )
+                                }
+                                TextButton(onClick = { onSetSubscriptionEnabled(url, !enabled) }) {
+                                    Text(if (isPersian) { if (enabled) "غیرفعال" else "فعال" } else { if (enabled) "Disable" else "Enable" })
+                                }
+                                TextButton(onClick = { onRemoveSubscription(url) }) {
+                                    Text(if (isPersian) "حذف" else "Remove")
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        if (isPersian) "آدرس‌ها پس از اعتبارسنجی HTTPS در Android Keystore رمزگذاری می‌شوند. منابع عمومی ممکن است ناپایدار یا غیرقابل‌اعتماد باشند."
+                        else "URLs are validated as HTTPS and encrypted at rest with Android Keystore. Public feeds may be unstable or untrusted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
                     )
                 }
             }
         }
 
-        items(locations) { loc ->
-            val isSelected = selectedLocation.id == loc.id
-            val latency = loc.latencyMillis
-            val latencyColor = when {
-                latency == null -> Color(0xFF6F9299)
-                latency < 60 -> Color(0xFF10B981)
-                latency < 120 -> Color(0xFFF59E0B)
-                else -> Color(0xFFF97316)
+        item {
+            Text(strings.freeServersTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        item {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { countryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                    val selected = countries.firstOrNull { it.code == selectedCountryCode }
+                    Text(if (selectedCountryCode == "ALL") {
+                        if (isPersian) "انتخاب کشور: همه کشورها" else "Select country: All countries"
+                    } else {
+                        selected?.let { "${it.flag}  ${ServerCountryClassifier.displayName(it, isPersian)}" } ?: "Select country"
+                    })
+                }
+                DropdownMenu(expanded = countryMenuExpanded, onDismissRequest = { countryMenuExpanded = false }) {
+                    DropdownMenuItem(text = { Text(if (isPersian) "🌐 همه کشورها" else "🌐 All countries") }, onClick = { selectedCountryCode = "ALL"; countryMenuExpanded = false })
+                    countries.forEach { country ->
+                        DropdownMenuItem(text = { Text("${country.flag}  ${ServerCountryClassifier.displayName(country, isPersian)}") }, onClick = { selectedCountryCode = country.code; countryMenuExpanded = false })
+                    }
+                }
             }
-
+            Text(if (isPersian) "${visibleServers.size} سرور" else "${visibleServers.size} servers", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+        }
+        groupedServers.forEach { (country, countryServers) ->
+            item(key = "country-${country.code}") {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(country.flag, fontSize = 20.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(ServerCountryClassifier.displayName(country, isPersian), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("(${countryServers.size})", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                }
+            }
+            items(countryServers, key = { it.id }) { server ->
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onSelectLocation(loc) },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) Color(0xFF0E2F37) else Color(0xFF10242D)
-                ),
-                border = BorderStroke(
-                    width = if (isSelected) 1.5.dp else 1.dp,
-                    color = if (isSelected) Color(0xFF35D6CD) else Color(0xFF1A3942)
-                )
+                    .clickable { onSelectServer(server) },
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Row(
                     modifier = Modifier
@@ -1224,94 +811,46 @@ fun LocationsTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF07131A))
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color(0xFF35D6CD) else Color(0xFF1A3942),
-                                    CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(loc.flagEmoji, fontSize = 22.sp)
-                        }
+                        Text(server.flagEmoji, fontSize = 24.sp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = if (currentLanguage == AppLanguage.PERSIAN) loc.countryFa else loc.countryEn,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = Color.White
-                                )
-                                if (loc.isAuto) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFF35D6CD).copy(alpha = 0.2f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            if (currentLanguage == AppLanguage.PERSIAN) "پیشنهادی" else "Recommended",
-                                            color = Color(0xFF35D6CD),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 9.sp
-                                        )
-                                    }
+                                Text(server.name, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF10B981).copy(alpha = 0.2f))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text("FREE", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                 }
                             }
-                            Spacer(Modifier.height(2.dp))
                             Text(
-                                text = if (currentLanguage == AppLanguage.PERSIAN) loc.cityFa else loc.cityEn,
-                                fontSize = 11.sp,
-                                color = Color(0xFF6F9299)
+                                "${server.engineId.uppercase()} • ${server.measurement.latencyMillis} ms",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
                             )
                         }
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (latency != null) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(latencyColor.copy(alpha = 0.15f))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = "$latency ms",
-                                    color = latencyColor,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Spacer(Modifier.width(10.dp))
-                        }
-
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF35D6CD),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .border(1.dp, Color(0xFF6F9299), CircleShape)
-                            )
-                        }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF38BDF8).copy(alpha = 0.15f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            "${strings.scoreLabel} ${server.score.score.toInt()}",
+                            color = Color(0xFF38BDF8),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
+            }
         }
-
-        item { Spacer(Modifier.height(16.dp)) }
     }
 }
 
@@ -1325,17 +864,16 @@ fun SecuritySettingsTab(
     onOpenAndroidSettings: () -> Unit,
     selectedDns: String,
     onSelectDns: (String) -> Unit,
+    isRunningLeakDiagnostics: Boolean,
+    addressFamilyDiagnostics: List<AddressFamilyProbe>?,
+    dnsResolverObservation: DnsResolverObservation?,
+    dohProbeObservation: DohProbeObservation?,
+    onRunLeakDiagnostics: () -> Unit,
     splitApps: Set<String>,
     installedApps: List<com.molido.vpn.policy.AppInfo>,
     onToggleApp: (String) -> Unit,
     activeConfigText: String,
-    onUpdateConfig: (String) -> Unit,
-    isScanningCleanIps: Boolean,
-    cleanIps: List<com.molido.vpn.engine.warp.CleanIpResult>,
-    onScanCleanIps: () -> Unit,
-    onApplyCleanIp: (String) -> Unit,
-    isCheckingUpdate: Boolean,
-    onCheckUpdate: () -> Unit
+    onUpdateConfig: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1347,9 +885,8 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Row(
                     modifier = Modifier
@@ -1359,8 +896,8 @@ fun SecuritySettingsTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text(strings.languageLabel, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text(currentLanguage.displayName, style = MaterialTheme.typography.bodySmall, color = Color(0xFF35D6CD))
+                        Text(strings.languageLabel, fontWeight = FontWeight.Bold)
+                        Text(currentLanguage.displayName, style = MaterialTheme.typography.bodySmall, color = Color(0xFF38BDF8))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -1382,9 +919,8 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -1393,31 +929,24 @@ fun SecuritySettingsTab(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(strings.killSwitchTitle, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(strings.killSwitchTitle, fontWeight = FontWeight.Bold)
                             Text(
                                 strings.killSwitchDesc,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF6F9299)
+                                color = Color(0xFF94A3B8)
                             )
                         }
-                        Switch(
-                            checked = killSwitch,
-                            onCheckedChange = onToggleKillSwitch,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color(0xFF061418),
-                                checkedTrackColor = Color(0xFF35D6CD)
-                            )
-                        )
+                        Switch(checked = killSwitch, onCheckedChange = onToggleKillSwitch)
                     }
                     Spacer(Modifier.height(10.dp))
                     Button(
                         onClick = onOpenAndroidSettings,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3942))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155))
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF35D6CD))
+                        Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(strings.alwaysOnButton, fontSize = 12.sp, color = Color.White)
+                        Text(strings.alwaysOnButton, fontSize = 12.sp)
                     }
                 }
             }
@@ -1427,13 +956,12 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.dohTitle, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text(strings.dohDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
+                    Text(strings.dohTitle, fontWeight = FontWeight.Bold)
+                    Text(strings.dohDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                     Spacer(Modifier.height(10.dp))
                     for (provider in DohDnsResolver.PROVIDERS) {
                         Row(
@@ -1446,13 +974,13 @@ fun SecuritySettingsTab(
                             Icon(
                                 if (selectedDns == provider.id) Icons.Default.CheckCircle else Icons.Default.Dns,
                                 contentDescription = null,
-                                tint = if (selectedDns == provider.id) Color(0xFF35D6CD) else Color(0xFF6F9299),
+                                tint = if (selectedDns == provider.id) Color(0xFF38BDF8) else Color(0xFF64748B),
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text(provider.name, fontWeight = FontWeight.Medium, color = Color.White)
-                                Text(provider.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
+                                Text(provider.name, fontWeight = FontWeight.Medium)
+                                Text(provider.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                             }
                         }
                     }
@@ -1460,61 +988,97 @@ fun SecuritySettingsTab(
             }
         }
 
-        // Cloudflare Clean IP Scanner Section
+        // Independent DNS and address-family diagnostics
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.cleanIpTitle, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text(strings.cleanIpDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
+                    Text(
+                        if (currentLanguage == AppLanguage.PERSIAN) "آزمون مستقل نشت DNS و IP" else "Independent DNS & IP Leak Diagnostics",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (currentLanguage == AppLanguage.PERSIAN)
+                            "با اجرای دستی، ipify برای IPv4/IPv6، سرویس bash.ws برای مشاهده DNS و سرویس‌دهنده DoH انتخاب‌شده برای پرس‌وجوی ثابت example.com استفاده می‌شود. آزمون DoH فقط درخواست‌های خود برنامه را پوشش می‌دهد و تبدیل DNS کل سیستم هنوز پیاده‌سازی نشده است. این سرویس‌ها IP مبدأ و داده آزمون را دریافت می‌کنند. نتیجه خالی به معنی نبود نشت نیست."
+                        else
+                            "Manual test contacts ipify for separate IPv4/IPv6 probes, bash.ws to observe system DNS resolvers, and the selected DoH provider with a fixed example.com A/AAAA query. The DoH check covers app-owned lookups only; system-wide DNS interception is not implemented. These services receive your request source IP and test data. Empty results are inconclusive, not proof of no leak.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
+                    )
                     Spacer(Modifier.height(10.dp))
                     Button(
-                        onClick = onScanCleanIps,
-                        enabled = !isScanningCleanIps,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
+                        onClick = onRunLeakDiagnostics,
+                        enabled = !isRunningLeakDiagnostics,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (isScanningCleanIps) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF061418), strokeWidth = 2.dp)
+                        if (isRunningLeakDiagnostics) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text(strings.cleanIpScanning, fontSize = 12.sp, color = Color(0xFF061418))
-                        } else {
-                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF061418))
-                            Spacer(Modifier.width(8.dp))
-                            Text(strings.cleanIpAction, fontSize = 13.sp, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
                         }
-                    }
-
-                    if (cleanIps.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
                         Text(
-                            if (currentLanguage == AppLanguage.PERSIAN) "آی‌پی‌های تمیز با کمترین پینگ:" else "Discovered Clean Endpoints:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF35D6CD),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        for (clean in cleanIps.take(4)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(clean.ip, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("${clean.latencyMillis} ms", fontSize = 11.sp, color = Color(0xFF10B981), fontWeight = FontWeight.Bold)
-                                }
-                                TextButton(onClick = { onApplyCleanIp(clean.ip) }) {
-                                    Text(strings.cleanIpApply, fontSize = 12.sp, color = Color(0xFF35D6CD))
-                                }
+                            if (isRunningLeakDiagnostics) {
+                                if (currentLanguage == AppLanguage.PERSIAN) "در حال آزمون..." else "Testing..."
+                            } else {
+                                if (currentLanguage == AppLanguage.PERSIAN) "اجرای آزمون‌ها" else "Run diagnostics"
                             }
+                        )
+                    }
+                    dohProbeObservation?.let { result ->
+                        Text(
+                            (if (currentLanguage == AppLanguage.PERSIAN) "DoH داخل تونل — A: " else "DoH over VPN — A: ") +
+                                if (result.aQuerySucceeded) "OK" else "FAILED",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.aQuerySucceeded) Color(0xFF34D399) else Color(0xFFFBBF24)
+                        )
+                        Text(
+                            (if (currentLanguage == AppLanguage.PERSIAN) "AAAA: " else "AAAA: ") +
+                                if (result.aaaaQuerySucceeded) "OK" else "FAILED",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.aaaaQuerySucceeded) Color(0xFF34D399) else Color(0xFFFBBF24)
+                        )
+                    }
+                    addressFamilyDiagnostics?.forEach { result ->
+                        Text(
+                            "${result.family}: " + if (result.reachable) result.publicAddress.orEmpty()
+                            else (result.errorCode ?: "INCONCLUSIVE"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.reachable) Color(0xFF34D399) else Color(0xFFFBBF24)
+                        )
+                    }
+                    dnsResolverObservation?.let { observation ->
+                        if (observation.evidenceAvailable) {
+                            Text(
+                                (if (currentLanguage == AppLanguage.PERSIAN) "DNSهای مشاهده‌شده: " else "Observed DNS resolvers: ") +
+                                    observation.resolverAddresses.joinToString(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFBBF24)
+                            )
+                        } else {
+                            Text(
+                                if (currentLanguage == AppLanguage.PERSIAN)
+                                    "نتیجه DNS قطعی نیست: ${observation.errorCode ?: "نامشخص"}"
+                                else "DNS result inconclusive: ${observation.errorCode ?: "unknown"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFBBF24)
+                            )
+                        }
+                        observation.publicAddresses.takeIf { it.isNotEmpty() }?.let { addresses ->
+                            Text(
+                                (if (currentLanguage == AppLanguage.PERSIAN) "IP خروجی مشاهده‌شده: " else "Observed egress IP: ") +
+                                    addresses.joinToString(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                        observation.conclusion?.let { conclusion ->
+                            Text(
+                                (if (currentLanguage == AppLanguage.PERSIAN) "نتیجه سرویس آزمون: " else "Test-service conclusion: ") + conclusion,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
                         }
                     }
                 }
@@ -1525,58 +1089,14 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.splitTunnelTitle, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
+                    Text(strings.splitTunnelTitle, fontWeight = FontWeight.Bold)
+                    Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (currentLanguage == AppLanguage.PERSIAN) "${splitApps.size} برنامه مستثنی شده است" else "${splitApps.size} apps bypassed",
-                        color = Color(0xFF35D6CD),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-
-        // App Version & Updates Section
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(strings.updateTitle, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("${strings.currentVersionLabel}: v${UpdateManager.CURRENT_VERSION}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF35D6CD))
-                        }
-                        Button(
-                            onClick = onCheckUpdate,
-                            enabled = !isCheckingUpdate,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3942))
-                        ) {
-                            if (isCheckingUpdate) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF35D6CD), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.updateChecking, fontSize = 11.sp, color = Color(0xFF35D6CD))
-                            } else {
-                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF35D6CD))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.updateCheckAction, fontSize = 12.sp, color = Color.White)
-                            }
-                        }
-                    }
+                    Text("${splitApps.size} apps bypassed", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
             }
         }
@@ -1585,12 +1105,11 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.activeConfigTitle, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(strings.activeConfigTitle, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = activeConfigText,
@@ -1605,5 +1124,233 @@ fun SecuritySettingsTab(
         }
 
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+fun StatusCard(
+    strings: AppStrings,
+    connectionState: ConnectionState,
+    selectedEngine: String,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            StatusBadge(strings = strings, connectionState = connectionState)
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            val isConnected = connectionState is ConnectionState.Connected
+            val isBusy = connectionState is ConnectionState.Preparing ||
+                connectionState is ConnectionState.Connecting ||
+                connectionState is ConnectionState.Verifying ||
+                connectionState is ConnectionState.Recovering
+
+            val buttonColor = when {
+                isConnected -> Color(0xFFEF4444)
+                isBusy -> Color(0xFFF59E0B)
+                else -> MaterialTheme.colorScheme.primary
+            }
+
+            Button(
+                onClick = {
+                    if (isConnected || isBusy) onDisconnect() else onConnect()
+                },
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = buttonColor)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            when (connectionState) {
+                                is ConnectionState.Preparing -> strings.connecting
+                                is ConnectionState.Connecting -> strings.connecting
+                                is ConnectionState.Verifying -> strings.verifying
+                                else -> strings.connecting
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.PowerSettingsNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        val engineLabel = if (selectedEngine == "auto") "AUTO" else selectedEngine.uppercase()
+                        Text(
+                            if (isConnected) strings.disconnectAction else "${strings.connectAction} ($engineLabel)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusBadge(strings: AppStrings, connectionState: ConnectionState) {
+    val (badgeBg, badgeText, badgeIcon) = when (connectionState) {
+        is ConnectionState.Connected -> Triple(
+            Color(0xFF10B981),
+            strings.connectedVerified,
+            Icons.Default.CheckCircle
+        )
+        is ConnectionState.Verifying -> Triple(
+            Color(0xFFF59E0B),
+            strings.verifying,
+            Icons.Default.Lock
+        )
+        is ConnectionState.Connecting -> Triple(
+            Color(0xFF0284C7),
+            "${strings.connecting} (${connectionState.engineId})",
+            Icons.Default.Speed
+        )
+        is ConnectionState.Preparing -> Triple(
+            Color(0xFF64748B),
+            strings.connecting,
+            Icons.Default.Info
+        )
+        is ConnectionState.Recovering -> Triple(
+            Color(0xFFF59E0B),
+            strings.verifying,
+            Icons.Default.Warning
+        )
+        is ConnectionState.Failed -> Triple(
+            Color(0xFFEF4444),
+            "${strings.failedPrefix}${connectionState.reasonCode}",
+            Icons.Default.Warning
+        )
+        is ConnectionState.Idle -> Triple(
+            Color(0xFF475569),
+            strings.disconnected,
+            Icons.Default.PowerSettingsNew
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(badgeBg.copy(alpha = 0.2f))
+            .border(1.dp, badgeBg, RoundedCornerShape(20.dp))
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = badgeIcon,
+                contentDescription = null,
+                tint = badgeBg,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(badgeText, color = badgeBg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+fun DiagnosticsCard(strings: AppStrings, diagnostics: ConnectionDiagnostics, connectionState: ConnectionState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(strings.diagnosticsTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                DiagnosticItem(strings.egressVerified, if (connectionState is ConnectionState.Connected) strings.egressVerified else strings.egressPending)
+                DiagnosticItem(strings.latencyLabel, "${diagnostics.lastLatencyMillis ?: 0} ms")
+                DiagnosticItem("${strings.downloadLabel} / ${strings.uploadLabel}", "${diagnostics.bytesIn / 1024}k / ${diagnostics.bytesOut / 1024}k")
+            }
+        }
+    }
+}
+
+@Composable
+fun DiagnosticItem(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+
+private data class DashboardFeature(
+    val number: String,
+    val titleFa: String,
+    val titleEn: String,
+    val descriptionFa: String,
+    val descriptionEn: String,
+    val statusFa: String,
+    val statusEn: String
+)
+
+@Composable
+private fun DashboardFeatureCenter(language: AppLanguage) {
+    val persian = language == AppLanguage.PERSIAN
+    val features = listOf(
+        DashboardFeature("01", "حلقه اتصال هوشمند", "Smart Connection Ring", "وضعیت اتصال فقط پس از تأیید ترافیک واقعی معتبر است.", "Connection is valid only after real traffic verification.", "رابط آماده؛ موتور WireGuard هنوز یکپارچه نشده.", "UI ready; WireGuard backend integration pending."),
+        DashboardFeature("02", "IP و موقعیت خروجی", "Exit IP & Location", "IP از پاسخ HTTPS خروجی گرفته می‌شود؛ مکان نیازمند منبع معتبر است.", "IP comes from HTTPS egress; geolocation needs a trusted provider.", "IP verifier در حال اتصال؛ مکان در انتظار.", "IP verifier integration in progress; location pending."),
+        DashboardFeature("03", "مانیتور زنده شبکه", "Live Network Monitor", "تأخیر و شمارنده ترافیک؛ packet loss و throughput نیازمند probe واقعی‌اند.", "Latency and traffic counters; packet loss and throughput need real probes.", "جزئی؛ اندازه‌گیری کامل باقی است.", "Partial; full measurement pending."),
+        DashboardFeature("04", "مرکز امنیت", "Security Center", "تنظیم DNS و Kill Switch موجود است؛ آزمون نشت DNS و IPv6 باقی است.", "DNS and Kill Switch settings exist; DNS and IPv6 leak tests remain.", "تنظیمات موجود؛ آزمون دستگاه لازم است.", "Settings exist; device tests required."),
+        DashboardFeature("05", "مسیریابی هوشمند", "AI Smart Routing", "انتخاب خودکار فقط از مسیرهای دارای اندازه‌گیری واقعی مجاز است.", "Automatic selection is limited to routes with real measurements.", "تا ثبت اندازه‌گیری واقعی غیرفعال.", "Disabled until real measurements exist."),
+        DashboardFeature("06", "مدیریت موتورهای VPN", "VPN Engine Manager", "کاتالوگ و Adapterها نیازمند GoBackend و ادغام موتورهای واقعی‌اند.", "Catalog and adapters need GoBackend and real engine integrations.", "در حال توسعه؛ هیچ موتور تأیید دستگاه نیست.", "In development; no engine is device-verified."),
+        DashboardFeature("07", "تاریخچه اتصال", "Connection History", "ثبت امن رخدادها، مدت اتصال و علت قطع؛ بدون ذخیره کلیدها.", "Secure event history, duration and disconnect causes; never store keys.", "در انتظار پیاده‌سازی.", "Implementation pending."),
+        DashboardFeature("08", "به‌روزرسانی هسته‌ها", "Core Updates", "بررسی امضا، نسخه، ABI، ضد rollback و بازیابی نسخه قبلی.", "Signature, version, ABI, anti-rollback and recovery checks.", "در انتظار پیاده‌سازی.", "Implementation pending."),
+        DashboardFeature("09", "دستیار AI عیب‌یابی", "AI Diagnostics", "تحلیل خطا و پیشنهاد اصلاح؛ اقدامات حساس با تأیید کاربر.", "Error analysis and remediation; sensitive actions require approval.", "در انتظار موتور تحلیل و داده واقعی.", "AI engine and real telemetry pending."),
+        DashboardFeature("10", "شخصی‌سازی", "Personalization", "زبان و تنظیمات پایه موجود است؛ تم و اعلان‌ها نیازمند تکمیل‌اند.", "Language and basic settings exist; themes and notifications need completion.", "جزئی؛ توسعه ادامه دارد.", "Partial; further work required.")
+    )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Column(Modifier.padding(top = 14.dp, bottom = 4.dp)) {
+                Text(if (persian) "مرکز کنترل MolidoVPN AI" else "MolidoVPN AI Feature Center", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(if (persian) "وضعیت واقعی هر ده قابلیت؛ موارد تأییدنشده فعال نمایش داده نمی‌شوند." else "Readiness for all ten features; unverified capabilities are never shown as active.", color = Color(0xFF86A5AA), fontSize = 12.sp)
+            }
+        }
+        items(features) { feature ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(feature.number, color = Color(0xFF35D6CD), fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(if (persian) feature.titleFa else feature.titleEn, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(if (persian) "در حال تکمیل" else "IN PROGRESS", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(if (persian) feature.descriptionFa else feature.descriptionEn, color = Color(0xFF9BB5B9), fontSize = 11.sp)
+                    Text(if (persian) feature.statusFa else feature.statusEn, color = Color(0xFF45CFC7), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+        item { Spacer(Modifier.height(20.dp)) }
     }
 }

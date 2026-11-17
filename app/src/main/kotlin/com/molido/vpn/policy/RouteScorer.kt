@@ -21,13 +21,21 @@ data class RouteScore(
 
 object RouteScorer {
     fun score(measurement: RouteMeasurement): RouteScore {
-        if (!measurement.reachable) {
+        val latencyValue = measurement.latencyMillis
+        val lossValue = measurement.packetLossPercent
+        val stabilityValue = measurement.stabilityPercent
+        if (measurement.engineId.isBlank() ||
+            !measurement.reachable ||
+            latencyValue == null || latencyValue < 0L ||
+            lossValue == null || !lossValue.isFinite() || lossValue !in 0.0..100.0 ||
+            stabilityValue == null || !stabilityValue.isFinite() || stabilityValue !in 0.0..100.0
+        ) {
             return RouteScore(measurement.engineId, 0.0, false)
         }
 
-        val latency = measurement.latencyMillis?.coerceAtLeast(0) ?: 2_000L
-        val loss = (measurement.packetLossPercent ?: 100.0).coerceIn(0.0, 100.0)
-        val stability = (measurement.stabilityPercent ?: 0.0).coerceIn(0.0, 100.0)
+        val latency = latencyValue
+        val loss = lossValue
+        val stability = stabilityValue
         val latencyScore = (100.0 - (latency / 30.0)).coerceIn(0.0, 100.0)
         val lossScore = 100.0 - loss
         val priority = measurement.userPriority.coerceIn(-20, 20).toDouble()

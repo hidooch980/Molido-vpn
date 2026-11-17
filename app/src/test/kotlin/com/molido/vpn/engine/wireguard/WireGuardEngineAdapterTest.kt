@@ -9,18 +9,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WireGuardEngineAdapterTest {
-
     private val validConfig = """
         [Interface]
-        PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+        PrivateKey = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
         Address = 10.200.0.2/32
         DNS = 1.1.1.1
         MTU = 1420
 
         [Peer]
-        PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
+        PublicKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
         Endpoint = 198.51.100.1:51820
-        AllowedIPs = 0.0.0.0/0
+        AllowedIPs = 0.0.0.0/0, ::/0
     """.trimIndent()
 
     @Test
@@ -47,20 +46,100 @@ class WireGuardEngineAdapterTest {
     }
 
     @Test
-    fun connectEmitsTransportReadyAndReturnsSession() = runBlocking {
+    fun adapterRejectsProfilesWithoutIpv6DefaultRoute() = runBlocking {
+        val adapter = WireGuardEngineAdapter()
+        val ipv4Only = validConfig.replace(", ::/0", "")
+        val result = adapter.validate(EngineConfiguration(ipv4Only.toByteArray(Charsets.UTF_8)))
+        assertTrue(result is ValidationResult.Invalid)
+        assertEquals("IPV6_DEFAULT_ROUTE_REQUIRED", (result as ValidationResult.Invalid).reasonCode)
+    }
+
+    @Test
+    fun adapterAcceptsSelectedDnsOverride() = runBlocking {
+        val adapter = WireGuardEngineAdapter()
+        val result = adapter.validate(
+            EngineConfiguration(
+                opaquePayload = validConfig.toByteArray(Charsets.UTF_8),
+                dnsServers = listOf("9.9.9.9", "149.112.112.112")
+            )
+        )
+        assertEquals(ValidationResult.Valid, result)
+    }
+
+    @Test
+    fun failedCloseCanBeRetriedWithoutLosingSessionOwnership() {
+        val adapter = WireGuardEngineAdapter()
+        val tunnel = object : com.wireguard.android.backend.Tunnel {
+            override fun getName(): String = "retry-test"
+            override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
+        }
+        val session = adapter.WireGuardSession(
+            tunnel,
+            java.util.concurrent.atomic.AtomicBoolean(true),
+            onEvent = {}
+        )
+        assertTrue(session.beginClose())
+        session.allowCloseRetry()
+        assertTrue("A failed backend shutdown must allow another close attempt", session.beginClose())
+    }
+
+    @Test
+    fun unexpectedBackendShutdownEmitsRecoverableFailure() {
         val adapter = WireGuardEngineAdapter()
         val events = mutableListOf<EngineEvent>()
-
-        val session = adapter.connect(
-            configuration = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)),
-            protectSocket = { true },
+        val tunnel = object : com.wireguard.android.backend.Tunnel {
+            override fun getName(): String = "unexpected-down-test"
+            override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
+        }
+        val session = adapter.WireGuardSession(
+            tunnel,
+            java.util.concurrent.atomic.AtomicBoolean(true),
             onEvent = { events.add(it) }
         )
+        session.markStartupComplete()
+        session.onBackendStateChange(com.wireguard.android.backend.Tunnel.State.DOWN)
 
-        assertEquals("wireguard", session.engineId)
-        assertEquals(1, events.size)
-        assertTrue(events[0] is EngineEvent.TransportReady)
+        val failure = events.single() as EngineEvent.Failed
+        assertEquals("WIREGUARD_BACKEND_STOPPED", failure.reasonCode)
+        assertTrue(failure.recoverable)
+        assertTrue(!session.isActive)
+    }
 
-        adapter.disconnect(session)
+    @Test
+    fun intentionalShutdownDoesNotEmitUnexpectedFailure() {
+        val adapter = WireGuardEngineAdapter()
+        val events = mutableListOf<EngineEvent>()
+        val tunnel = object : com.wireguard.android.backend.Tunnel {
+            override fun getName(): String = "intentional-down-test"
+            override fun onStateChange(newState: com.wireguard.android.backend.Tunnel.State) = Unit
+        }
+        val session = adapter.WireGuardSession(
+            tunnel,
+            java.util.concurrent.atomic.AtomicBoolean(true),
+            onEvent = { events.add(it) }
+        )
+        session.markStartupComplete()
+        assertTrue(session.beginClose())
+        session.onBackendStateChange(com.wireguard.android.backend.Tunnel.State.DOWN)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun connectWithoutAndroidContextFailsClosed() = runBlocking {
+        val adapter = WireGuardEngineAdapter()
+        val events = mutableListOf<EngineEvent>()
+        var failed = false
+        try {
+            adapter.connect(
+                configuration = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8)),
+                protectSocket = { true },
+                onEvent = { events.add(it) }
+            )
+        } catch (error: IllegalStateException) {
+            failed = error.message == "ANDROID_CONTEXT_REQUIRED"
+        }
+
+        assertTrue("Android context is required before native backend startup", failed)
+        assertTrue("A failed startup must never emit TransportReady", events.none { it is EngineEvent.TransportReady })
     }
 }

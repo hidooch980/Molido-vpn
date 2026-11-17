@@ -1,6 +1,5 @@
 package com.molido.vpn.engine
 
-import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.verifier.MockTrafficVerifier
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -28,7 +27,7 @@ class ConnectionCoordinatorTest {
     @Test
     fun successfulConnectionMovesThroughFullVerificationToConnected() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = true, simulatedLatency = 35L)
-        val adapter = WireGuardEngineAdapter()
+        val adapter = TestReadyAdapter()
         val coordinator = ConnectionCoordinator(
             scope = this,
             trafficVerifier = mockVerifier,
@@ -36,18 +35,18 @@ class ConnectionCoordinatorTest {
         )
 
         val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
-        coordinator.requestConnect("wireguard", config)
+        coordinator.requestConnect("test-ready", config)
         advanceUntilIdle()
 
         assertEquals(ConnectionState.Preparing, coordinator.state.value)
 
-        coordinator.onVpnPermissionGranted("wireguard", config)
+        coordinator.onVpnPermissionGranted("test-ready", config)
         advanceUntilIdle()
 
         val state = coordinator.state.value
         assertTrue("State should be Connected, but was: $state", state is ConnectionState.Connected)
         val connected = state as ConnectionState.Connected
-        assertEquals("wireguard", connected.engineId)
+        assertEquals("test-ready", connected.engineId)
         assertEquals(35L, coordinator.diagnostics.value.lastLatencyMillis)
 
         coordinator.disconnect()
@@ -56,9 +55,254 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun permissionCallbackMustMatchValidatedEngineAndConfiguration() = runTest {
+        val adapter = TestReadyAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+        val alteredConfig = EngineConfiguration("[Interface]".toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect("test-ready", config)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+
+        coordinator.onVpnPermissionGranted("unknown-engine", config)
+        coordinator.onVpnPermissionGranted("test-ready", alteredConfig)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+
+        coordinator.onVpnPermissionGranted("test-ready", config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+    }
+
+    @Test
+    fun failedAdapterDisconnectRetainsSessionAndCanBeRetried() = runTest {
+        val adapter = RetryDisconnectAdapter()
+        var tunTeardownCalls = 0
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceTornDown = { tunTeardownCalls++ }
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertTrue("A failed teardown must not report Idle", coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.disconnectCalls)
+
+        // A new connection must remain blocked while the old session is still owned.
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, adapter.disconnectCalls)
+        assertEquals(2, tunTeardownCalls)
+    }
+
+    @Test
+    fun failedTunTeardownRetainsSessionAndBlocksNewConnectionUntilRetry() = runTest {
+        val adapter = CountingTestAdapter()
+        var tunTeardownCalls = 0
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceTornDown = {
+                tunTeardownCalls++
+                if (tunTeardownCalls == 1) error("simulated TUN teardown failure")
+            }
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertTrue("A failed TUN teardown must not report Idle", coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.disconnectCalls)
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertEquals("The old session must continue owning the TUN", 1, adapter.connectCalls)
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, adapter.disconnectCalls)
+        assertEquals(2, tunTeardownCalls)
+    }
+
+    @Test
+    fun failedCleanupWithoutSessionStillBlocksReconnectUntilTunRetrySucceeds() = runTest {
+        val adapter = FailingConnectAdapter()
+        var tunTeardownCalls = 0
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceTornDown = {
+                tunTeardownCalls++
+                if (tunTeardownCalls == 1) error("simulated TUN cleanup failure")
+            }
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue("Pending TUN cleanup must block a new preparation", coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, tunTeardownCalls)
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+    }
+
+    @Test
+    fun recoverableEngineFailureDoesNotRecoverWhenTunnelTeardownFails() = runTest {
+        val adapter = RetryDisconnectAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+
+        adapter.eventSink?.invoke(EngineEvent.Failed("TRANSIENT_ENGINE_ERROR", recoverable = true))
+        advanceUntilIdle()
+
+        val failed = coordinator.state.value
+        assertTrue("Teardown failure must remain Failed, not Recovering: $failed", failed is ConnectionState.Failed)
+        assertEquals("TUN_TEARDOWN_FAILED", (failed as ConnectionState.Failed).reasonCode)
+        assertEquals(1, adapter.disconnectCalls)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, adapter.disconnectCalls)
+    }
+
+    @Test
+    fun recoverableBackendShutdownReconnectsWithBoundedRecovery() = runTest {
+        val adapter = RecoveringTestAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+        assertEquals(1, adapter.connectCalls)
+
+        adapter.eventSink?.invoke(EngineEvent.Failed("WIREGUARD_BACKEND_STOPPED", recoverable = true))
+        advanceUntilIdle()
+
+        assertTrue("A recoverable backend stop should reconnect after teardown", coordinator.state.value is ConnectionState.Connected)
+        assertEquals(2, adapter.connectCalls)
+    }
+
+    @Test
+    fun networkHandoverRetriesAndReconnectsAfterTemporaryEgressFailure() = runTest {
+        val verifier = SequencedTrafficVerifier(true, false, true)
+        val adapter = RecoveringTestAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = verifier,
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+
+        coordinator.verifyActiveTunnelAfterNetworkChange()
+        advanceUntilIdle()
+
+        assertTrue("A transient handover failure should recover only after a fresh verified egress", coordinator.state.value is ConnectionState.Connected)
+        assertEquals(2, adapter.connectCalls)
+    }
+
+    @Test
+    fun physicalNetworkLossTearsDownAndWaitsForNetworkReturnBeforeRecovery() = runTest {
+        val adapter = RecoveringTestAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.onPhysicalNetworkLost()
+        advanceUntilIdle()
+        val recovering = coordinator.state.value
+        assertTrue("Physical loss must leave a recoverable state: $recovering", recovering is ConnectionState.Recovering)
+        assertEquals(1, adapter.disconnectCalls)
+        assertEquals("No reconnect is attempted while offline", 1, adapter.connectCalls)
+
+        coordinator.verifyActiveTunnelAfterNetworkChange()
+        advanceUntilIdle()
+        assertTrue("The tunnel should be re-established only after network return", coordinator.state.value is ConnectionState.Connected)
+        assertEquals(2, adapter.connectCalls)
+    }
+
+    @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
-        val adapter = WireGuardEngineAdapter()
+        val adapter = TestReadyAdapter()
         val coordinator = ConnectionCoordinator(
             scope = this,
             trafficVerifier = mockVerifier,
@@ -66,10 +310,10 @@ class ConnectionCoordinatorTest {
         )
 
         val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
-        coordinator.requestConnect("wireguard", config)
+        coordinator.requestConnect("test-ready", config)
         advanceUntilIdle()
 
-        coordinator.onVpnPermissionGranted("wireguard", config)
+        coordinator.onVpnPermissionGranted("test-ready", config)
         advanceUntilIdle()
 
         val state = coordinator.state.value
@@ -77,4 +321,151 @@ class ConnectionCoordinatorTest {
         val failed = state as ConnectionState.Failed
         assertTrue(failed.reasonCode.contains("Egress test failed"))
     }
+
+    private class SequencedTrafficVerifier(vararg outcomes: Boolean) : com.molido.vpn.verifier.TrafficVerifier {
+        private val results = ArrayDeque(outcomes.toList())
+
+        override suspend fun verify(timeoutMillis: Long): com.molido.vpn.verifier.VerificationResult {
+            val success = if (results.isEmpty()) true else results.removeFirst()
+            return if (success) {
+                com.molido.vpn.verifier.VerificationResult(true, latencyMillis = 20L, egressIp = "8.8.8.8")
+            } else {
+                com.molido.vpn.verifier.VerificationResult(false, errorMessage = "HANDOVER_EGRESS_FAILED")
+            }
+        }
+    }
+
+    private class RecoveringTestAdapter : EngineAdapter {
+        override val id: String = "recovering-test"
+        override val displayName: String = "Recovering test adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var connectCalls = 0
+        var disconnectCalls = 0
+        var eventSink: ((EngineEvent) -> Unit)? = null
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            connectCalls++
+            eventSink = onEvent
+            onEvent(EngineEvent.TransportReady)
+            return object : EngineSession {
+                override val engineId: String = id
+            }
+        }
+
+        override suspend fun disconnect(session: EngineSession) { disconnectCalls++ }
+    }
+
+    private class RetryDisconnectAdapter : EngineAdapter {
+        override val id: String = "retry-disconnect"
+        override val displayName: String = "Retry disconnect test adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var disconnectCalls = 0
+        var eventSink: ((EngineEvent) -> Unit)? = null
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            val session = object : EngineSession {
+                override val engineId: String = id
+            }
+            eventSink = onEvent
+            onEvent(EngineEvent.TransportReady)
+            return session
+        }
+
+        override suspend fun disconnect(session: EngineSession) {
+            disconnectCalls++
+            if (disconnectCalls == 1) error("simulated backend teardown failure")
+        }
+    }
+
+    private class FailingConnectAdapter : EngineAdapter {
+        override val id: String = "failing-connect"
+        override val displayName: String = "Failing connect adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var connectCalls = 0
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            connectCalls++
+            error("simulated engine connect failure after TUN setup")
+        }
+
+        override suspend fun disconnect(session: EngineSession) = Unit
+    }
+
+    private class CountingTestAdapter : EngineAdapter {
+        override val id: String = "counting-test"
+        override val displayName: String = "Counting test adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var connectCalls = 0
+        var disconnectCalls = 0
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            connectCalls++
+            onEvent(EngineEvent.TransportReady)
+            return object : EngineSession {
+                override val engineId: String = id
+            }
+        }
+
+        override suspend fun disconnect(session: EngineSession) {
+            disconnectCalls++
+        }
+    }
+
+    private class TestReadyAdapter : EngineAdapter {
+        override val id: String = "test-ready"
+        override val displayName: String = "Test-only ready adapter"
+        override val capabilities = EngineCapabilities(
+            supportsIpv4 = true,
+            supportsIpv6 = true,
+            supportsUdp = true,
+            supportsDnsControl = true,
+            supportsPerAppRouting = false,
+            supportsMtuConfiguration = false
+        )
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            onEvent(EngineEvent.TransportReady)
+            return object : EngineSession {
+                override val engineId: String = id
+            }
+        }
+
+        override suspend fun disconnect(session: EngineSession) = Unit
+    }
+
 }

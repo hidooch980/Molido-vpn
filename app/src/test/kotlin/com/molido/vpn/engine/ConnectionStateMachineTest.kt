@@ -35,6 +35,12 @@ class ConnectionStateMachineTest {
     }
 
     @Test
+    fun recoveryCanStartANewPreparingAttempt() {
+        val recovering = ConnectionState.Recovering("wireguard", "WIREGUARD_BACKEND_STOPPED")
+        assertEquals(ConnectionState.Preparing, ConnectionStateMachine.transition(recovering, ConnectionEvent.Start))
+    }
+
+    @Test
     fun stopAlwaysReturnsToIdle() {
         val next = ConnectionStateMachine.transition(
             ConnectionState.Connected("wireguard", 1234L),
