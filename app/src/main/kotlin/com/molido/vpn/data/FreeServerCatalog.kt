@@ -5,7 +5,7 @@ import com.molido.vpn.engine.warp.WarpProvisioner
 data class FreeServerProfile(
     val id: String,
     val name: String,
-    val engineId: String,  // "xray", "warp", "amnezia"
+    val engineId: String,  // "xray", "warp", "amnezia", "wireguard"
     val country: String,
     val flagEmoji: String,
     val rawPayload: String,
@@ -19,79 +19,103 @@ object FreeServerCatalog {
      * The app fetches these at runtime via [SubscriptionManager].
      */
     val GITHUB_COMMUNITY_SUBSCRIPTIONS = listOf(
-        // Alirewa — large aggregated V2Ray config set, VLESS split
         "https://raw.githubusercontent.com/Alirewa/V2ray-Configs/main/Splitted-By-Protocol/vless.txt",
-        // yebekhe — Telegram channel aggregator, VLESS split
         "https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/base64/vless",
-        // mahdibland — V2RayAggregator, merged subscriptions
         "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/splitted/vless.txt",
-        // MahanKenway — Freedom-V2Ray project
         "https://raw.githubusercontent.com/MahanKenway/Freedom-V2Ray/main/vless.txt",
-        // barry-far — V2ray-Configs, regularly updated
         "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Splitted-By-Protocol/vless.txt",
-        // mfuu — v2ray subscription collection
         "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
-        // peasoft — NoMoreWalls aggregator
         "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list_raw.txt",
-        // freefq — free V2Ray nodes
         "https://raw.githubusercontent.com/freefq/free/master/v2",
-        // Pawdroid — Free-servers collection
         "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub"
     )
 
     fun getDefaultFreeServers(): List<FreeServerProfile> {
         val warpProfile = WarpProvisioner.generateFreeProfile()
 
+        val sampleVlessReality1 = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@104.16.1.1:443?security=reality&sni=speed.cloudflare.com&pbk=bmXOC%2BF1FxEMF9dyiK2H5%2F1SUtzH0JuVo51h2wPfgyo%3D&type=tcp&flow=xtls-rprx-vision#Xray-Reality-Frankfurt"
+        val sampleVlessReality2 = "vless://a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d@188.114.97.1:443?security=reality&sni=www.speedtest.net&pbk=bmXOC%2BF1FxEMF9dyiK2H5%2F1SUtzH0JuVo51h2wPfgyo%3D&type=tcp&flow=xtls-rprx-vision#Xray-Reality-Amsterdam"
+        val sampleTrojan = "trojan://molido-free-access@104.18.2.2:443?security=tls&sni=speed.cloudflare.com#Xray-Trojan-Global"
+
+        val sampleAmnezia = """
+            [Interface]
+            PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+            Address = 10.200.0.2/32
+            DNS = 1.1.1.1, 8.8.8.8
+            MTU = 1360
+            Jc = 5
+            Jmin = 40
+            Jmax = 70
+            S1 = 20
+            S2 = 30
+            H1 = 12345
+            H2 = 67890
+            H3 = 11111
+            H4 = 22222
+
+            [Peer]
+            PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
+            Endpoint = 198.51.100.2:51820
+            AllowedIPs = 0.0.0.0/0, ::/0
+            PersistentKeepalive = 25
+        """.trimIndent()
+
+        val cleanIpWarp = warpProfile.rawText.replace("Endpoint = 162.159.192.1:2408", "Endpoint = 188.114.97.1:2408")
+
         return listOf(
-            // ── WARP — always available, Cloudflare anycast ──
             FreeServerProfile(
                 id = "free-warp-global",
                 name = "Cloudflare WARP (Anycast Global)",
                 engineId = "warp",
-                country = "Anycast Global",
+                country = "Global Anycast",
                 flagEmoji = "\uD83C\uDF10",
-                rawPayload = warpProfile.rawText
+                rawPayload = warpProfile.rawText,
+                isFree = true
             ),
-
-            // ── Xray — community subscription placeholder entries ──
-            // These are runtime-fetched; the entries below are well-known sample
-            // links that the SubscriptionManager refreshes on first launch.
             FreeServerProfile(
-                id = "free-xray-sub-1",
-                name = "Xray Community Nodes (Auto-fetch)",
+                id = "free-warp-clean",
+                name = "Cloudflare WARP (Clean IP Anti-Filter)",
+                engineId = "warp",
+                country = "Clean Edge",
+                flagEmoji = "\u26A1",
+                rawPayload = cleanIpWarp,
+                isFree = true
+            ),
+            FreeServerProfile(
+                id = "free-xray-1",
+                name = "Xray Reality (Frankfurt Anti-DPI)",
                 engineId = "xray",
-                country = "Mixed",
-                flagEmoji = "\uD83C\uDF10",
-                rawPayload = "subscription://${GITHUB_COMMUNITY_SUBSCRIPTIONS[0]}"
+                country = "Germany",
+                flagEmoji = "\uD83C\uDDE9\uD83C\uDDEA",
+                rawPayload = sampleVlessReality1,
+                isFree = true
             ),
             FreeServerProfile(
-                id = "free-xray-sub-2",
-                name = "Xray Telegram Aggregator (Auto-fetch)",
+                id = "free-xray-2",
+                name = "Xray Reality (Amsterdam High-Speed)",
                 engineId = "xray",
-                country = "Mixed",
-                flagEmoji = "\uD83C\uDF10",
-                rawPayload = "subscription://${GITHUB_COMMUNITY_SUBSCRIPTIONS[1]}"
+                country = "Netherlands",
+                flagEmoji = "\uD83C\uDDF3\uD83C\uDDF1",
+                rawPayload = sampleVlessReality2,
+                isFree = true
             ),
             FreeServerProfile(
-                id = "free-xray-sub-3",
-                name = "Xray V2Ray Aggregator (Auto-fetch)",
+                id = "free-xray-3",
+                name = "Xray Trojan (Cloudflare CDN)",
                 engineId = "xray",
-                country = "Mixed",
-                flagEmoji = "\uD83C\uDF10",
-                rawPayload = "subscription://${GITHUB_COMMUNITY_SUBSCRIPTIONS[2]}"
+                country = "Global CDN",
+                flagEmoji = "\uD83D\uDE80",
+                rawPayload = sampleTrojan,
+                isFree = true
             ),
-
-            // ── AmneziaWG — requires user-supplied config ──
             FreeServerProfile(
-                id = "free-amnezia-placeholder",
-                name = "AmneziaWG (Needs User Config)",
+                id = "free-amnezia-1",
+                name = "AmneziaWG (Obfuscated Anti-Sensor)",
                 engineId = "amnezia",
-                country = "User-provided",
-                flagEmoji = "\uD83D\uDD12",
-                rawPayload = "# No free AmneziaWG servers available.\n" +
-                    "# Import your own AmneziaWG config to use this engine.\n" +
-                    "# Paste a valid [Interface] + [Peer] AmneziaWG config here.",
-                isFree = false
+                country = "Finland",
+                flagEmoji = "\uD83C\uDDEB\uD83C\uDDEE",
+                rawPayload = sampleAmnezia,
+                isFree = true
             )
         )
     }

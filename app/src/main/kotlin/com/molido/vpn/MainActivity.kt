@@ -578,6 +578,7 @@ fun ConnectTab(
         // Big beautiful animated circular connect button in the center
         item {
             CircularConnectButton(
+                strings = strings,
                 connectionState = connectionState,
                 onConnect = onConnect,
                 onDisconnect = onDisconnect
@@ -613,6 +614,7 @@ fun ConnectTab(
 
 @Composable
 fun CircularConnectButton(
+    strings: AppStrings,
     connectionState: ConnectionState,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -715,7 +717,7 @@ fun CircularConnectButton(
                 } else {
                     Icon(
                         imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = if (isConnected) "Disconnect" else "Connect",
+                        contentDescription = if (isConnected) strings.disconnectAction else strings.connectAction,
                         tint = if (isConnected) Color(0xFF35D6CD) else Color(0xFFE8F7F8),
                         modifier = Modifier.size(44.dp)
                     )
@@ -723,14 +725,13 @@ fun CircularConnectButton(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = when {
-                        isConnected -> "DISCONNECT"
-                        isBusy -> "CONNECTING"
-                        else -> "CONNECT"
+                        isConnected -> strings.disconnectAction
+                        isBusy -> strings.connecting
+                        else -> strings.connectAction
                     },
                     color = if (isConnected) Color(0xFF35D6CD) else Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    letterSpacing = 1.sp
+                    fontSize = 13.sp
                 )
             }
         }
@@ -1144,7 +1145,12 @@ fun ServersTab(
                                         .background(Color(0xFF35D6CD).copy(alpha = 0.2f))
                                         .padding(horizontal = 5.dp, vertical = 1.dp)
                                 ) {
-                                    Text("FREE", color = Color(0xFF35D6CD), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                    Text(
+                                        if (server.isFree) "رایگان" else "سفارشی",
+                                        color = Color(0xFF35D6CD),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp
+                                    )
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1400,7 +1406,12 @@ fun SecuritySettingsTab(
                     Text(strings.splitTunnelTitle, fontWeight = FontWeight.Bold, color = Color.White)
                     Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
                     Spacer(Modifier.height(8.dp))
-                    Text("${splitApps.size} apps bypassed", color = Color(0xFF35D6CD), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        if (currentLanguage == AppLanguage.PERSIAN) "${splitApps.size} برنامه مستثنی شده است" else "${splitApps.size} apps bypassed",
+                        color = Color(0xFF35D6CD),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
                 }
             }
         }

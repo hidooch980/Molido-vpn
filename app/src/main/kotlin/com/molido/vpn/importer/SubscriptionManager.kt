@@ -62,7 +62,7 @@ object SubscriptionManager {
         connection.connectTimeout = 8000
         connection.readTimeout = 8000
         connection.requestMethod = "GET"
-        connection.setRequestProperty("User-Agent", "MolidoVPN/0.1.0")
+        connection.setRequestProperty("User-Agent", "MolidoVPN/0.2.0")
 
         val responseCode = connection.responseCode
         if (responseCode != HttpURLConnection.HTTP_OK) {
@@ -71,10 +71,18 @@ object SubscriptionManager {
 
         val rawContent = connection.inputStream.bufferedReader().use(BufferedReader::readText)
 
-        // Decode Base64 subscription body if base64 encoded
+        // Decode Base64 subscription body if base64 encoded (supporting both standard and URL-safe base64)
         val decodedLines = try {
-            val cleaned = rawContent.replace("\n", "").replace("\r", "").trim()
-            val decoded = String(Base64.getDecoder().decode(cleaned), Charsets.UTF_8)
+            var cleaned = rawContent.replace("\n", "").replace("\r", "").replace(" ", "").trim()
+            while (cleaned.length % 4 != 0) {
+                cleaned += "="
+            }
+            val bytes = try {
+                Base64.getDecoder().decode(cleaned)
+            } catch (_: Exception) {
+                Base64.getUrlDecoder().decode(cleaned)
+            }
+            val decoded = String(bytes, Charsets.UTF_8)
             decoded.lines()
         } catch (_: Exception) {
             rawContent.lines()

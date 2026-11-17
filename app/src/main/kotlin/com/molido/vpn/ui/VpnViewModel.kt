@@ -141,6 +141,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         loadInstalledApps()
         refreshServers()
         checkForUpdates(silent = true)
+        updateFromGithubCommunity()
     }
 
     fun setLanguage(lang: AppLanguage) {
@@ -161,15 +162,16 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         configStore.saveSelectedEngine(engineId)
 
         if (engineId == "auto") {
-            // In auto mode, pick the best scored server from catalog
             val bestServer = _servers.value.firstOrNull()
             if (bestServer != null) {
                 updateActiveConfig(bestServer.payload)
             }
         } else {
-            val freeMatch = FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
-            if (freeMatch != null) {
-                updateActiveConfig(freeMatch.rawPayload)
+            val match = _servers.value.firstOrNull { it.engineId == engineId }
+                ?: FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
+            if (match != null) {
+                val payload = if (match is ServerItem) match.payload else (match as FreeServerProfile).rawPayload
+                updateActiveConfig(payload)
             }
         }
     }
@@ -267,11 +269,12 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         val freeServers = FreeServerCatalog.getDefaultFreeServers()
 
         val mockMetrics = mapOf(
-            "free-warp-global" to RouteMeasurement("warp", true, 26L, 0.0, 99.0, userPriority = 10),
-            "free-xray-sub-1" to RouteMeasurement("xray", true, 42L, 0.0, 95.0, userPriority = 8),
-            "free-xray-sub-2" to RouteMeasurement("xray", true, 48L, 0.1, 94.0, userPriority = 7),
-            "free-xray-sub-3" to RouteMeasurement("xray", true, 55L, 0.0, 93.0, userPriority = 6),
-            "free-amnezia-placeholder" to RouteMeasurement("amnezia", false, null, 100.0, 0.0, userPriority = 0)
+            "free-warp-clean" to RouteMeasurement("warp", true, 22L, 0.0, 99.0, userPriority = 10),
+            "free-warp-global" to RouteMeasurement("warp", true, 28L, 0.0, 98.0, userPriority = 9),
+            "free-xray-1" to RouteMeasurement("xray", true, 38L, 0.0, 97.0, userPriority = 8),
+            "free-xray-2" to RouteMeasurement("xray", true, 44L, 0.1, 96.0, userPriority = 7),
+            "free-xray-3" to RouteMeasurement("xray", true, 52L, 0.0, 95.0, userPriority = 6),
+            "free-amnezia-1" to RouteMeasurement("amnezia", true, 65L, 0.0, 90.0, userPriority = 5)
         )
 
         val items = freeServers.map { profile ->

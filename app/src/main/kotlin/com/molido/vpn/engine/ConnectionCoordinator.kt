@@ -117,7 +117,7 @@ class ConnectionCoordinator(
     }
 
     private suspend fun verifyEgressTraffic(engineId: String) {
-        val verification = trafficVerifier.verify(timeoutMillis = 4000L)
+        val verification = trafficVerifier.verify(timeoutMillis = 8000L)
         if (verification.success) {
             val now = System.currentTimeMillis()
             _diagnostics.value = _diagnostics.value.copy(

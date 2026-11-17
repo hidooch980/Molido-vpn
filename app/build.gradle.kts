@@ -12,8 +12,8 @@ android {
         applicationId = "com.molido.vpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
@@ -57,6 +57,9 @@ dependencies {
 
     // OkHttp for subscription fetching and WARP registration
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Official WireGuard Go tunnel engine
+    implementation("com.wireguard.android:tunnel:1.0.20230706")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")

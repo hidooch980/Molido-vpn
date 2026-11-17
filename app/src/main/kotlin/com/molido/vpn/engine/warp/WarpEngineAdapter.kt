@@ -31,7 +31,20 @@ class WarpEngineAdapter : EngineAdapter {
         protectSocket: (Int) -> Boolean,
         onEvent: (EngineEvent) -> Unit
     ): EngineSession {
-        val config = WarpProvisioner.generateFreeProfile()
+        val configText = try {
+            String(configuration.opaquePayload, Charsets.UTF_8).takeIf { it.isNotBlank() }
+        } catch (_: Exception) { null }
+
+        val config = if (configText != null && configText.contains("[Interface]")) {
+            try {
+                com.molido.vpn.engine.wireguard.WireGuardConfigParser.parse(configText)
+            } catch (_: Exception) {
+                WarpProvisioner.generateFreeProfile()
+            }
+        } else {
+            WarpProvisioner.generateFreeProfile()
+        }
+
         val session = WarpSession(id, config, onEvent)
         onEvent(EngineEvent.TransportReady)
         return session
