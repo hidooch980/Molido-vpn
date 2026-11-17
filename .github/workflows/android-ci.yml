@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -34,6 +34,15 @@ jobs:
       - name: Build debug APK (CI validation only)
         if: success()
         run: ./gradlew assembleDebug --stacktrace
+      - name: Android Keystore instrumentation tests
+        if: success()
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest --stacktrace
       - name: Upload test and lint reports
         if: always()
         uses: actions/upload-artifact@v4
