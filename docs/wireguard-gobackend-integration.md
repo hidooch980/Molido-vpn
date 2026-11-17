@@ -14,7 +14,7 @@
 ## Important boundaries
 
 - A backend state of UP proves that the userspace tunnel was activated, not that the peer completed a handshake or that the internet is reachable.
-- A successful HTTPS egress probe must traverse Android's active VPN Network. The RFC 8484 client now binds app-owned DNS requests to that VPN Network, but Android system UDP/53 traffic is not intercepted or converted to DoH. DNS and IPv6 leak behavior still require dedicated physical-device tests.
+- A successful HTTPS egress probe must traverse Android's active VPN Network. The RFC 8484 client binds app-owned DNS requests to that VPN Network; Android system UDP/53 traffic is not intercepted or converted to DoH. An independent diagnostic runner probes IPv4-only/IPv6-only egress and observes system DNS resolvers through a random bash.ws test query. These diagnostics still require physical-device validation and do not by themselves certify no leaks.
 - The Quick Settings tile is intentionally not declared while it still targets the removed legacy service. It must be reimplemented against the shared tunnel controller before being re-enabled.
 - No physical-device acceptance has been performed in this integration change.
 
@@ -24,8 +24,8 @@
 2. Grant VPN permission and start a valid, reachable WireGuard profile.
 3. Confirm the backend reports UP and inspect peer handshake age and transfer counters.
 4. Confirm HTTPS public egress IP through the active VPN Network.
-5. Verify IPv4, IPv6, DNS, and DNS-over-HTTPS behavior; verify no fallback leaks on tunnel loss.
-6. Test disconnect, reconnect, Wi-Fi/mobile handover, airplane mode, process death, sleep/wake, and at least a multi-hour soak.
+5. Run independent IPv4-only and IPv6-only HTTPS probes, observe system DNS resolvers with a unique authoritative DNS query, and separately test app-scoped RFC 8484 DoH. An empty DNS observation is inconclusive, not a clean result. System-wide UDP/53 interception remains outstanding.
+6. Test disconnect, reconnect, Wi-Fi/mobile handover (the app now re-verifies egress after validated physical network changes), airplane mode, process death, sleep/wake, and at least a multi-hour soak.
 7. Test Android Always-on VPN / lockdown separately; do not infer it from the in-app Kill Switch preference.
 
 ## Release gates
