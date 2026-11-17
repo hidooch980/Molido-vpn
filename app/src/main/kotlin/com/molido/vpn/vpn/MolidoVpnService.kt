@@ -91,6 +91,19 @@ class MolidoVpnService : VpnService() {
         try {
             startForeground(NOTIFICATION_ID, buildNotification("Connecting to $engineId..."))
 
+            // For WireGuard and WARP, GoBackend manages its own userspace TUN tunnel.
+            if (engineId == "warp" || engineId == "wireguard") {
+                isServiceRunning = true
+                activeEngine = engineId
+                updateNotification("Connected via $engineId")
+                handoverMonitor?.stop()
+                handoverMonitor = NetworkHandoverMonitor(this) { isWifi, isCellular ->
+                    val netType = if (isWifi) "Wi-Fi" else if (isCellular) "Cellular" else "Network"
+                    updateNotification("Connected via $engineId ($netType)")
+                }.also { it.start() }
+                return
+            }
+
             val pfd = establishTunInterface(engineId, configText)
             if (pfd != null) {
                 vpnInterface?.close()

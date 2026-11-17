@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
@@ -71,6 +72,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -120,6 +122,7 @@ import com.molido.vpn.policy.KillSwitchManager
 import com.molido.vpn.ui.AppLanguage
 import com.molido.vpn.ui.AppStrings
 import com.molido.vpn.ui.Localization
+import com.molido.vpn.ui.LocationItem
 import com.molido.vpn.ui.ServerItem
 import com.molido.vpn.ui.VpnUiEffect
 import com.molido.vpn.ui.VpnViewModel
@@ -177,6 +180,8 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val diagnostics by viewModel.diagnostics.collectAsState()
     val selectedEngineId by viewModel.selectedEngineId.collectAsState()
     val servers by viewModel.servers.collectAsState()
+    val locations by viewModel.locations.collectAsState()
+    val selectedLocation by viewModel.selectedLocation.collectAsState()
     val activeConfigText by viewModel.activeConfigText.collectAsState()
     val killSwitchEnabled by viewModel.killSwitchEnabled.collectAsState()
     val selectedDns by viewModel.selectedDns.collectAsState()
@@ -188,6 +193,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val cleanIps by viewModel.cleanIps.collectAsState()
     val updateInfo by viewModel.updateInfo.collectAsState()
     val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
+    val updateDownloadProgress by viewModel.updateDownloadProgress.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -225,17 +231,53 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     if (info.releaseNotes.isNotBlank()) {
                         Text(info.releaseNotes, style = MaterialTheme.typography.bodySmall, color = Color(0xFFE2E8F0))
                     }
+                    if (updateDownloadProgress != null) {
+                        Spacer(Modifier.height(14.dp))
+                        val progress = updateDownloadProgress ?: 0f
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = Color(0xFF35D6CD),
+                            trackColor = Color(0xFF1A3942)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "${strings.downloadingUpdate} ${(progress * 100).toInt()}%",
+                            color = Color(0xFF35D6CD),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        UpdateManager.openDownloadPage(context, info.downloadUrl)
-                        viewModel.dismissUpdateDialog()
+                        val url = info.downloadUrl
+                        if (!url.isNullOrBlank()) {
+                            viewModel.startInAppUpdate(context, url)
+                        } else {
+                            UpdateManager.openDownloadPage(context, null)
+                            viewModel.dismissUpdateDialog()
+                        }
                     },
+                    enabled = updateDownloadProgress == null,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
                 ) {
-                    Text(strings.updateDownloadAction, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
+                    if (updateDownloadProgress != null) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color(0xFF061418),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.downloadingUpdate, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
+                    } else {
+                        Text(strings.updateDownloadAction, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
@@ -317,13 +359,13 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(strings.tabServers) },
+                        label = { Text(strings.tabLocations, fontWeight = FontWeight.SemiBold) },
                         selected = selectedTab == 1,
                         onClick = {
                             selectedTab = 1
                             scope.launch { drawerState.close() }
                         },
-                        icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                        icon = { Icon(Icons.Default.Public, contentDescription = null) },
                         colors = NavigationDrawerItemDefaults.colors(
                             selectedContainerColor = Color(0xFF10242D),
                             selectedIconColor = Color(0xFF35D6CD),
@@ -384,7 +426,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         Column {
                             Text(
                                 when (selectedTab) {
-                                    1 -> strings.tabServers
+                                    1 -> strings.tabLocations
                                     2 -> strings.tabSettings
                                     else -> "MolidoVPN"
                                 },
@@ -407,7 +449,9 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         }) {
                             Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF35D6CD))
                         }
-                        IconButton(onClick = { viewModel.refreshServers() }) {
+                        IconButton(onClick = {
+                            if (selectedTab == 1) viewModel.refreshLocations() else viewModel.refreshServers()
+                        }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF6F9299))
                         }
                     },
@@ -442,10 +486,10 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     NavigationBarItem(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.Storage, contentDescription = strings.tabServers) },
+                        icon = { Icon(Icons.Default.Public, contentDescription = strings.tabLocations) },
                         label = {
                             Text(
-                                strings.tabServers,
+                                strings.tabLocations,
                                 fontSize = 12.sp,
                                 fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal
                             )
@@ -492,31 +536,20 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         connectionState = connectionState,
                         diagnostics = diagnostics,
                         selectedEngine = selectedEngineId,
+                        selectedLocation = selectedLocation,
+                        currentLanguage = language,
                         onSelectEngine = { viewModel.setSelectedEngine(it) },
+                        onOpenLocations = { selectedTab = 1 },
                         onConnect = { viewModel.onConnectClicked(context) },
                         onDisconnect = { viewModel.onDisconnectClicked() }
                     )
-                    1 -> ServersTab(
+                    1 -> LocationsTab(
                         strings = strings,
-                        servers = servers,
-                        isFetching = isFetchingCommunity,
-                        isPinging = isPinging,
-                        onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
-                        onPingAll = { viewModel.pingAllServers() },
-                        onSelectServer = { viewModel.selectServer(it) },
-                        onImportClipboard = {
-                            val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                            if (text.isNotBlank()) {
-                                viewModel.importFromRawText(text)
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
+                        currentLanguage = language,
+                        locations = locations,
+                        selectedLocation = selectedLocation,
+                        onSelectLocation = { viewModel.selectLocation(it) },
+                        onRefresh = { viewModel.refreshLocations() }
                     )
                     2 -> SecuritySettingsTab(
                         strings = strings,
@@ -557,7 +590,10 @@ fun ConnectTab(
     connectionState: ConnectionState,
     diagnostics: ConnectionDiagnostics,
     selectedEngine: String,
+    selectedLocation: LocationItem,
+    currentLanguage: AppLanguage,
     onSelectEngine: (String) -> Unit,
+    onOpenLocations: () -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -566,13 +602,23 @@ fun ConnectTab(
             .fillMaxSize()
             .padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item { Spacer(Modifier.height(8.dp)) }
+        item { Spacer(Modifier.height(4.dp)) }
 
         // Status badge at top
         item {
             StatusBadge(strings = strings, connectionState = connectionState)
+        }
+
+        // Location selector pill / card
+        item {
+            LocationSelectorCard(
+                strings = strings,
+                location = selectedLocation,
+                currentLanguage = currentLanguage,
+                onClick = onOpenLocations
+            )
         }
 
         // Big beautiful animated circular connect button in the center
@@ -1022,15 +1068,91 @@ fun ProtocolSelector(
 }
 
 @Composable
-fun ServersTab(
+fun LocationSelectorCard(
     strings: AppStrings,
-    servers: List<ServerItem>,
-    isFetching: Boolean,
-    isPinging: Boolean,
-    onUpdateFromGithub: () -> Unit,
-    onPingAll: () -> Unit,
-    onSelectServer: (ServerItem) -> Unit,
-    onImportClipboard: () -> Unit
+    location: LocationItem,
+    currentLanguage: AppLanguage,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+        border = BorderStroke(1.dp, Color(0xFF1A3942))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF07131A))
+                        .border(1.dp, Color(0xFF35D6CD).copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        location.flagEmoji,
+                        fontSize = 22.sp
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = if (currentLanguage == AppLanguage.PERSIAN) location.countryFa else location.countryEn,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = if (currentLanguage == AppLanguage.PERSIAN) location.cityFa else location.cityEn,
+                        color = Color(0xFF6F9299),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF35D6CD).copy(alpha = 0.15f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        strings.changeLocation,
+                        color = Color(0xFF35D6CD),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.Public,
+                        contentDescription = null,
+                        tint = Color(0xFF35D6CD),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LocationsTab(
+    strings: AppStrings,
+    currentLanguage: AppLanguage,
+    locations: List<LocationItem>,
+    selectedLocation: LocationItem,
+    onSelectLocation: (LocationItem) -> Unit,
+    onRefresh: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1039,91 +1161,60 @@ fun ServersTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Update from GitHub community button
-                    Button(
-                        onClick = onUpdateFromGithub,
-                        enabled = !isFetching,
-                        modifier = Modifier.weight(1.2f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
-                    ) {
-                        if (isFetching) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF061418), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.updatingGithub, fontSize = 11.sp, color = Color(0xFF061418))
-                        } else {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF061418))
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.updateFromGithub, fontSize = 12.sp, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    // Batch Ping Button
-                    OutlinedButton(
-                        onClick = onPingAll,
-                        enabled = !isPinging,
-                        modifier = Modifier.weight(1.1f),
-                        border = BorderStroke(1.dp, Color(0xFF35D6CD))
-                    ) {
-                        if (isPinging) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF35D6CD), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.pingingStatus, fontSize = 11.sp, color = Color(0xFF35D6CD))
-                        } else {
-                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF35D6CD))
-                            Spacer(Modifier.width(4.dp))
-                            Text(strings.pingAllButton, fontSize = 12.sp, color = Color(0xFF35D6CD))
-                        }
-                    }
-
-                    // Import Clipboard Button
-                    OutlinedButton(
-                        onClick = onImportClipboard,
-                        modifier = Modifier.weight(0.9f),
-                        border = BorderStroke(1.dp, Color(0xFF1A3942))
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF6F9299))
-                        Spacer(Modifier.width(4.dp))
-                        Text(strings.clipboardButton, fontSize = 12.sp, color = Color(0xFFE8F7F8))
-                    }
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = strings.selectLocation,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (currentLanguage == AppLanguage.PERSIAN)
+                            "لوکیشن مورد نظر را برای اتصال انتخاب کنید"
+                        else
+                            "Select your desired connection location",
+                        fontSize = 12.sp,
+                        color = Color(0xFF6F9299)
+                    )
+                }
+                IconButton(onClick = onRefresh) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = Color(0xFF35D6CD)
+                    )
                 }
             }
         }
 
-        item {
-            Text(
-                strings.freeServersTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-
-        items(servers) { server ->
-            val latency = server.measurement.latencyMillis
+        items(locations) { loc ->
+            val isSelected = selectedLocation.id == loc.id
+            val latency = loc.latencyMillis
             val latencyColor = when {
-                !server.measurement.reachable || latency == null -> Color(0xFFEF4444)
-                latency < 80 -> Color(0xFF10B981)
-                latency < 180 -> Color(0xFFF59E0B)
+                latency == null -> Color(0xFF6F9299)
+                latency < 60 -> Color(0xFF10B981)
+                latency < 120 -> Color(0xFFF59E0B)
                 else -> Color(0xFFF97316)
-            }
-            val latencyText = if (!server.measurement.reachable || latency == null) {
-                "قطع / Timeout"
-            } else {
-                "$latency ms"
             }
 
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onSelectServer(server) },
+                    .clickable { onSelectLocation(loc) },
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-                border = BorderStroke(1.dp, Color(0xFF1A3942))
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color(0xFF0E2F37) else Color(0xFF10242D)
+                ),
+                border = BorderStroke(
+                    width = if (isSelected) 1.5.dp else 1.dp,
+                    color = if (isSelected) Color(0xFF35D6CD) else Color(0xFF1A3942)
+                )
             ) {
                 Row(
                     modifier = Modifier
@@ -1133,58 +1224,94 @@ fun ServersTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(server.flagEmoji, fontSize = 24.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF07131A))
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Color(0xFF35D6CD) else Color(0xFF1A3942),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(loc.flagEmoji, fontSize = 22.sp)
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(server.name, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = Color.White)
-                                Spacer(Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF35D6CD).copy(alpha = 0.2f))
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        if (server.isFree) "رایگان" else "سفارشی",
-                                        color = Color(0xFF35D6CD),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 9.sp
-                                    )
+                                Text(
+                                    text = if (currentLanguage == AppLanguage.PERSIAN) loc.countryFa else loc.countryEn,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Color.White
+                                )
+                                if (loc.isAuto) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFF35D6CD).copy(alpha = 0.2f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            if (currentLanguage == AppLanguage.PERSIAN) "پیشنهادی" else "Recommended",
+                                            color = Color(0xFF35D6CD),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp
+                                        )
+                                    }
                                 }
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "${server.engineId.uppercase()} • ",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF6F9299)
-                                )
-                                Text(
-                                    latencyText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = latencyColor,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = if (currentLanguage == AppLanguage.PERSIAN) loc.cityFa else loc.cityEn,
+                                fontSize = 11.sp,
+                                color = Color(0xFF6F9299)
+                            )
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF35D6CD).copy(alpha = 0.15f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            "${strings.scoreLabel} ${server.score.score.toInt()}",
-                            color = Color(0xFF35D6CD),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (latency != null) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(latencyColor.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = "$latency ms",
+                                    color = latencyColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                        }
+
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF35D6CD),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, Color(0xFF6F9299), CircleShape)
+                            )
+                        }
                     }
                 }
             }
         }
+
+        item { Spacer(Modifier.height(16.dp)) }
     }
 }
 

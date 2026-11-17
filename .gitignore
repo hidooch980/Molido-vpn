@@ -13,6 +13,7 @@ Cargo.lock
 
 # Signing and secrets
 *.jks
+!app/molido-release.jks
 *.keystore
 *.p12
 .env

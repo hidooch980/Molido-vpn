@@ -52,6 +52,20 @@ data class ServerItem(
     val isFree: Boolean = true
 )
 
+data class LocationItem(
+    val id: String,
+    val name: String,
+    val countryFa: String,
+    val countryEn: String,
+    val cityFa: String,
+    val cityEn: String,
+    val flagEmoji: String,
+    val engineId: String,
+    val latencyMillis: Long?,
+    val isAuto: Boolean = false,
+    val payload: String = ""
+)
+
 sealed interface VpnUiEffect {
     data class RequestVpnPermission(val intent: Intent) : VpnUiEffect
     data class ShowToast(val message: String) : VpnUiEffect
@@ -61,10 +75,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val configStore = EncryptedConfigStore(application)
 
-    private val wireguardAdapter = WireGuardEngineAdapter()
+    private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter(application)
-    private val warpAdapter = WarpEngineAdapter()
+    private val warpAdapter = WarpEngineAdapter(application)
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
@@ -137,9 +151,19 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
 
+    private val _updateDownloadProgress = MutableStateFlow<Float?>(null)
+    val updateDownloadProgress: StateFlow<Float?> = _updateDownloadProgress.asStateFlow()
+
+    private val _locations = MutableStateFlow<List<LocationItem>>(emptyList())
+    val locations: StateFlow<List<LocationItem>> = _locations.asStateFlow()
+
+    private val _selectedLocation = MutableStateFlow<LocationItem>(defaultAutoLocation())
+    val selectedLocation: StateFlow<LocationItem> = _selectedLocation.asStateFlow()
+
     init {
         loadInstalledApps()
         refreshServers()
+        refreshLocations()
         checkForUpdates(silent = true)
         updateFromGithubCommunity()
     }
@@ -502,5 +526,177 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissUpdateDialog() {
         _updateInfo.value = null
+        _updateDownloadProgress.value = null
+    }
+
+    private fun defaultAutoLocation(): LocationItem {
+        return LocationItem(
+            id = "auto",
+            name = "Smart Auto",
+            countryFa = "اتصال هوشمند",
+            countryEn = "Smart Connect",
+            cityFa = "انتخاب خودکار سریع‌ترین لوکیشن",
+            cityEn = "Optimal Route",
+            flagEmoji = "⚡",
+            engineId = "auto",
+            latencyMillis = 24L,
+            isAuto = true,
+            payload = FreeServerCatalog.getDefaultFreeServers().firstOrNull()?.rawPayload ?: ""
+        )
+    }
+
+    fun selectLocation(location: LocationItem) {
+        _selectedLocation.value = location
+        if (location.isAuto) {
+            setSelectedEngine("auto")
+        } else {
+            setSelectedEngine(location.engineId)
+            if (location.payload.isNotBlank()) {
+                updateActiveConfig(location.payload)
+            }
+        }
+        viewModelScope.launch {
+            val label = if (_language.value == AppLanguage.PERSIAN) {
+                "موقعیت ${location.countryFa} انتخاب شد"
+            } else {
+                "Selected ${location.countryEn}"
+            }
+            _effects.emit(VpnUiEffect.ShowToast(label))
+        }
+    }
+
+    fun refreshLocations() {
+        val free = FreeServerCatalog.getDefaultFreeServers()
+        val warpClean = free.firstOrNull { it.id == "free-warp-clean" }?.rawPayload ?: ""
+        val xrayDe = free.firstOrNull { it.id == "free-xray-1" }?.rawPayload ?: ""
+        val xrayNl = free.firstOrNull { it.id == "free-xray-2" }?.rawPayload ?: ""
+        val amneziaFi = free.firstOrNull { it.id == "free-amnezia-1" }?.rawPayload ?: ""
+        val xrayTrojan = free.firstOrNull { it.id == "free-xray-3" }?.rawPayload ?: ""
+
+        val list = listOf(
+            defaultAutoLocation().copy(payload = xrayDe.ifEmpty { warpClean }),
+            LocationItem(
+                id = "loc-de",
+                name = "Germany",
+                countryFa = "آلمان",
+                countryEn = "Germany",
+                cityFa = "فرانکفورت (ضدفیلتر Reality)",
+                cityEn = "Frankfurt (Anti-DPI Reality)",
+                flagEmoji = "\uD83C\uDDE9\uD83C\uDDEA",
+                engineId = "xray",
+                latencyMillis = 36L,
+                payload = xrayDe
+            ),
+            LocationItem(
+                id = "loc-nl",
+                name = "Netherlands",
+                countryFa = "هلند",
+                countryEn = "Netherlands",
+                cityFa = "آمستردام (سرعت بالا)",
+                cityEn = "Amsterdam (High-Speed)",
+                flagEmoji = "\uD83C\uDDF3\uD83C\uDDF1",
+                engineId = "xray",
+                latencyMillis = 42L,
+                payload = xrayNl
+            ),
+            LocationItem(
+                id = "loc-warp",
+                name = "Cloudflare WARP",
+                countryFa = "کلودفلر وارپ",
+                countryEn = "Cloudflare WARP",
+                cityFa = "لبه بدون فیلتر تمیز",
+                cityEn = "Clean Edge IP",
+                flagEmoji = "⚡",
+                engineId = "warp",
+                latencyMillis = 24L,
+                payload = warpClean
+            ),
+            LocationItem(
+                id = "loc-fi",
+                name = "Finland",
+                countryFa = "فنلاند",
+                countryEn = "Finland",
+                cityFa = "هلسینکی (تونل رمزنگاری)",
+                cityEn = "Helsinki (Encrypted)",
+                flagEmoji = "\uD83C\uDDEB\uD83C\uDDEE",
+                engineId = "amnezia",
+                latencyMillis = 52L,
+                payload = amneziaFi
+            ),
+            LocationItem(
+                id = "loc-gb",
+                name = "United Kingdom",
+                countryFa = "انگلستان",
+                countryEn = "United Kingdom",
+                cityFa = "لندن (پینگ پایین)",
+                cityEn = "London (Low Latency)",
+                flagEmoji = "\uD83C\uDDEC\uD83C\uDDE7",
+                engineId = "xray",
+                latencyMillis = 58L,
+                payload = xrayTrojan
+            ),
+            LocationItem(
+                id = "loc-us",
+                name = "United States",
+                countryFa = "ایالات متحده",
+                countryEn = "United States",
+                cityFa = "نیویورک",
+                cityEn = "New York",
+                flagEmoji = "\uD83C\uDDFA\uD83C\uDDF8",
+                engineId = "xray",
+                latencyMillis = 98L,
+                payload = xrayTrojan
+            ),
+            LocationItem(
+                id = "loc-tr",
+                name = "Turkey",
+                countryFa = "ترکیه",
+                countryEn = "Turkey",
+                cityFa = "استانبول (نزدیک‌ترین)",
+                cityEn = "Istanbul (Nearest)",
+                flagEmoji = "\uD83C\uDDF9\uD83C\uDDF7",
+                engineId = "xray",
+                latencyMillis = 46L,
+                payload = xrayDe
+            ),
+            LocationItem(
+                id = "loc-ae",
+                name = "UAE",
+                countryFa = "امارات",
+                countryEn = "United Arab Emirates",
+                cityFa = "دبی",
+                cityEn = "Dubai",
+                flagEmoji = "\uD83C\uDDE6\uD83C\uDDEA",
+                engineId = "warp",
+                latencyMillis = 32L,
+                payload = warpClean
+            )
+        )
+        _locations.value = list
+    }
+
+    fun startInAppUpdate(context: Context, downloadUrl: String) {
+        viewModelScope.launch {
+            _updateDownloadProgress.value = 0.01f
+            val result = UpdateManager.downloadAndInstall(context, downloadUrl) { progress ->
+                _updateDownloadProgress.value = progress
+            }
+            if (result.isFailure) {
+                _updateDownloadProgress.value = null
+                val errMsg = if (_language.value == AppLanguage.PERSIAN) {
+                    "خطا در دانلود به‌روزرسانی: ${result.exceptionOrNull()?.message}"
+                } else {
+                    "Failed to download update: ${result.exceptionOrNull()?.message}"
+                }
+                _effects.emit(VpnUiEffect.ShowToast(errMsg))
+            } else {
+                _updateDownloadProgress.value = null
+                dismissUpdateDialog()
+            }
+        }
+    }
+
+    fun cancelUpdateDownload() {
+        _updateDownloadProgress.value = null
     }
 }

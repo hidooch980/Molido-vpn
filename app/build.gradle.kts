@@ -12,18 +12,30 @@ android {
         applicationId = "com.molido.vpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.3.0"
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("molido-release.jks")
+            storePassword = "molidovpn_pass123"
+            keyAlias = "molido"
+            keyPassword = "molidovpn_pass123"
+        }
+    }
+
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

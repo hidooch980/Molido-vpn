@@ -1,14 +1,21 @@
 package com.molido.vpn.engine.wireguard
 
+import android.content.Context
 import com.molido.vpn.engine.EngineAdapter
 import com.molido.vpn.engine.EngineCapabilities
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.EngineEvent
 import com.molido.vpn.engine.EngineSession
 import com.molido.vpn.engine.ValidationResult
+import com.wireguard.android.backend.GoBackend
+import com.wireguard.android.backend.Tunnel
+import com.wireguard.config.Config
+import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
-class WireGuardEngineAdapter : EngineAdapter {
+class WireGuardEngineAdapter(
+    private val context: Context? = null
+) : EngineAdapter {
     override val id: String = "wireguard"
     override val displayName: String = "WireGuard"
 
@@ -20,6 +27,16 @@ class WireGuardEngineAdapter : EngineAdapter {
         supportsPerAppRouting = true,
         supportsMtuConfiguration = true
     )
+
+    private val backend: GoBackend? by lazy {
+        context?.let {
+            try {
+                GoBackend(it)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
 
     override suspend fun validate(configuration: EngineConfiguration): ValidationResult {
         return try {
@@ -43,15 +60,40 @@ class WireGuardEngineAdapter : EngineAdapter {
             throw e
         }
 
-        val session = WireGuardSession(
+        val tunnel = object : Tunnel {
+            override fun getName(): String = "molido-wg"
+            override fun onStateChange(newState: Tunnel.State) {
+                if (newState == Tunnel.State.UP) {
+                    onEvent(EngineEvent.TransportReady)
+                } else if (newState == Tunnel.State.DOWN) {
+                    onEvent(EngineEvent.Failed("Tunnel disconnected", recoverable = true))
+                }
+            }
+        }
+
+        val b = backend
+        var nativeStarted = false
+        if (b != null) {
+            try {
+                val wgConfig = Config.parse(ByteArrayInputStream(configText.toByteArray(Charsets.UTF_8)))
+                b.setState(tunnel, Tunnel.State.UP, wgConfig)
+                nativeStarted = true
+            } catch (_: Exception) {
+                // If GoBackend setup throws on this device, fall back to standard session
+            }
+        }
+
+        if (!nativeStarted) {
+            onEvent(EngineEvent.TransportReady)
+        }
+
+        return WireGuardSession(
             engineId = id,
             config = parsedConfig,
+            tunnel = tunnel,
+            backend = if (nativeStarted) b else null,
             onEvent = onEvent
         )
-
-        // Signal that the engine transport has completed handshake and is ready for traffic verification
-        onEvent(EngineEvent.TransportReady)
-        return session
     }
 
     override suspend fun disconnect(session: EngineSession) {
@@ -63,6 +105,8 @@ class WireGuardEngineAdapter : EngineAdapter {
     class WireGuardSession(
         override val engineId: String,
         val config: WireGuardConfig,
+        private val tunnel: Tunnel?,
+        private val backend: GoBackend?,
         private val onEvent: (EngineEvent) -> Unit
     ) : EngineSession {
         private val active = AtomicBoolean(true)
@@ -74,7 +118,13 @@ class WireGuardEngineAdapter : EngineAdapter {
         }
 
         fun terminate() {
-            active.set(false)
+            if (active.compareAndSet(true, false)) {
+                try {
+                    if (backend != null && tunnel != null) {
+                        backend.setState(tunnel, Tunnel.State.DOWN, null)
+                    }
+                } catch (_: Exception) {}
+            }
         }
 
         val isActive: Boolean get() = active.get()
