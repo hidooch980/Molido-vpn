@@ -37,6 +37,9 @@ import com.molido.vpn.policy.SplitTunnelManager
 import com.molido.vpn.update.UpdateInfo
 import com.molido.vpn.update.UpdateManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
+import com.molido.vpn.verifier.IndependentLeakTestRunner
+import com.molido.vpn.verifier.AddressFamilyProbe
+import com.molido.vpn.verifier.DnsResolverObservation
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -67,6 +70,8 @@ sealed interface VpnUiEffect {
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val configStore = EncryptedConfigStore(application)
+
+    private val independentLeakTestRunner = IndependentLeakTestRunner(application)
 
     private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
@@ -214,6 +219,16 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             providerId = _selectedDns.value
         ).resolve(hostname, recordType)
     }
+
+    suspend fun runAddressFamilyDiagnostics(): List<AddressFamilyProbe> =
+        independentLeakTestRunner.checkIpv4AndIpv6()
+
+    /**
+     * Sends a random one-time DNS probe to an external authoritative test service.
+     * An empty resolver list is inconclusive, not proof of no leak.
+     */
+    suspend fun runSystemDnsLeakDiagnostic(): DnsResolverObservation =
+        independentLeakTestRunner.observeSystemDnsResolvers()
 
     fun setDnsProvider(providerId: String) {
         val provider = runCatching { DohDnsResolver.getProvider(providerId) }.getOrNull() ?: return
