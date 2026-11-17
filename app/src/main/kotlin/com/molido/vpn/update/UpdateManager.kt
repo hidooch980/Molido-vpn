@@ -81,21 +81,11 @@ object UpdateManager {
                 if (parseVersion(latestVersion) == null) throw IOException("Release tag has an invalid version")
                 val notes = json.optString("body", "").take(20_000)
                 val publishedAt = json.optString("published_at", "")
-                val assets = json.optJSONArray("assets")
-                var apkUrl: String? = null
-                if (assets != null) {
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.optJSONObject(i) ?: continue
-                        if (asset.optString("name") == "MolidoVPN-v$latestVersion.apk") {
-                            val candidate = asset.optString("browser_download_url", "")
-                            val parsed = runCatching { URL(candidate) }.getOrNull()
-                            if (parsed?.protocol == "https" && parsed.host.equals("github.com", true)) {
-                                apkUrl = candidate
-                            }
-                            break
-                        }
-                    }
-                }
+                // Release metadata is not an authenticity proof. Until the signed
+                // manifest, pinned signing identity, artifact digest, anti-rollback,
+                // compatibility and atomic rollback pipeline is implemented, never
+                // expose a direct APK URL from mutable GitHub release metadata.
+                val apkUrl: String? = null
                 UpdateInfo(
                     latestVersion = latestVersion,
                     currentVersion = currentVersion,
@@ -126,9 +116,16 @@ object UpdateManager {
     }
 
     fun openDownloadPage(context: Context, downloadUrl: String?) {
-        val targetUrl = downloadUrl ?: RELEASES_HTML_URL
-        val uri = Uri.parse(targetUrl)
-        require(uri.scheme == "https" && uri.host == "github.com") { "Untrusted update URL" }
+        // Direct artifact links are deliberately blocked until cryptographic
+        // verification is implemented. The user may inspect the official release
+        // page manually; this does not install or verify an update.
+        require(downloadUrl == null) { "UNVERIFIED_UPDATE_ARTIFACT_BLOCKED" }
+        val uri = Uri.parse(RELEASES_HTML_URL)
+        require(
+            uri.scheme == "https" &&
+                uri.host == "github.com" &&
+                uri.path == "/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
+        ) { "Untrusted update URL" }
         val intent = Intent(Intent.ACTION_VIEW, uri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
