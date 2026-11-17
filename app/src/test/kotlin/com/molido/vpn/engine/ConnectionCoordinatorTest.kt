@@ -115,6 +115,45 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun failedTunTeardownRetainsSessionAndBlocksNewConnectionUntilRetry() = runTest {
+        val adapter = CountingTestAdapter()
+        var tunTeardownCalls = 0
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceTornDown = {
+                tunTeardownCalls++
+                if (tunTeardownCalls == 1) error("simulated TUN teardown failure")
+            }
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertTrue("A failed TUN teardown must not report Idle", coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.disconnectCalls)
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertEquals("The old session must continue owning the TUN", 1, adapter.connectCalls)
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, adapter.disconnectCalls)
+        assertEquals(2, tunTeardownCalls)
+    }
+
+    @Test
     fun recoverableEngineFailureDoesNotRecoverWhenTunnelTeardownFails() = runTest {
         val adapter = RetryDisconnectAdapter()
         val coordinator = ConnectionCoordinator(
