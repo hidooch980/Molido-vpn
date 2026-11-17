@@ -12,11 +12,11 @@ class XrayEngineAdapter : EngineAdapter {
     override val displayName: String = "Xray-core (VLESS / Trojan / SS)"
 
     override val capabilities: EngineCapabilities = EngineCapabilities(
-        supportsIpv4 = true,
-        supportsIpv6 = true,
-        supportsUdp = true,
-        supportsDnsControl = true,
-        supportsPerAppRouting = true,
+        supportsIpv4 = false,
+        supportsIpv6 = false,
+        supportsUdp = false,
+        supportsDnsControl = false,
+        supportsPerAppRouting = false,
         supportsMtuConfiguration = false
     )
 
