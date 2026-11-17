@@ -23,8 +23,8 @@ jobs:
       - name: Verify release tag
         shell: bash
         run: |
-          APP_VERSION="$(sed -nE 's/^[[:space:]]*versionName = "([0-9]+\\.[0-9]+\\.[0-9]+)".*/\\1/p' app/build.gradle.kts | head -n 1)"
-          VERSION_CODE="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\\1/p' app/build.gradle.kts | head -n 1)"
+          APP_VERSION="$(sed -nE 's/^[[:space:]]*versionName = "([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$APP_VERSION" && test -n "$VERSION_CODE" || {
             echo "::error::Unable to read numeric versionName/versionCode from app/build.gradle.kts"
             exit 1
