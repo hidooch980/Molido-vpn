@@ -8,7 +8,7 @@ object ConnectionStateMachine {
     fun transition(current: ConnectionState, event: ConnectionEvent): ConnectionState =
         when (event) {
             ConnectionEvent.Start ->
-                if (current is ConnectionState.Idle || current is ConnectionState.Failed) {
+                if (current is ConnectionState.Idle || current is ConnectionState.Failed || current is ConnectionState.Recovering) {
                     ConnectionState.Preparing
                 } else current
 
