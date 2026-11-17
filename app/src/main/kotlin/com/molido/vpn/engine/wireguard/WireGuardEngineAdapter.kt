@@ -66,7 +66,6 @@ class WireGuardEngineAdapter(
     ): EngineSession {
         val contextReady = context
         if (contextReady == null) {
-            onEvent(EngineEvent.Failed("ANDROID_CONTEXT_REQUIRED", recoverable = false))
             throw IllegalStateException("ANDROID_CONTEXT_REQUIRED")
         }
 
@@ -74,7 +73,6 @@ class WireGuardEngineAdapter(
         val parsed = try {
             Config.parse(StringReader(configText))
         } catch (_: Exception) {
-            onEvent(EngineEvent.Failed("WIREGUARD_UPSTREAM_CONFIG_REJECTED", recoverable = false))
             throw IllegalArgumentException("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
         }
 
@@ -95,10 +93,8 @@ class WireGuardEngineAdapter(
             onEvent(EngineEvent.TransportReady)
             return session
         } catch (error: LinkageError) {
-            onEvent(EngineEvent.Failed("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", recoverable = false))
             throw IllegalStateException("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", error)
         } catch (error: Exception) {
-            onEvent(EngineEvent.Failed("WIREGUARD_BACKEND_START_FAILED", recoverable = true))
             throw error
         }
     }
