@@ -80,7 +80,7 @@ class VpnNetworkDohClientTest {
         val query = DnsWireMessage.createQuery("example.com", DnsRecordType.A)
         val response = query.copyOf().apply {
             this[2] = 0x81.toByte()
-            this[3] = 0x83.toByte()
+            this[3] = 0x82.toByte()
         }
         DnsWireMessage.validateResponse(query, response)
     }
