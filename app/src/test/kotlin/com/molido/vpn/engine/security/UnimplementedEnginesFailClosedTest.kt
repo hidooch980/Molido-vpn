@@ -17,7 +17,7 @@ class UnimplementedEnginesFailClosedTest {
     @Test
     fun amneziaDoesNotReportTransportReady() = runBlocking {
         assertUnavailable { events ->
-            AmneziaWgEngineAdapter().connect(configuration, { false }, events::add)
+            AmneziaWgEngineAdapter().connect(configuration, { false }, { event -> events.add(event); Unit })
         }
     }
 
