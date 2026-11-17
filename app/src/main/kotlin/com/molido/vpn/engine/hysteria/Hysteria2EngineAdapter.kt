@@ -25,7 +25,7 @@ class Hysteria2EngineAdapter : EngineAdapter {
             val uri = String(configuration.opaquePayload, Charsets.UTF_8)
             Hysteria2ConfigParser.validate(uri)
         } catch (e: Exception) {
-            ValidationResult.Invalid("Failed to validate Hysteria 2 URI: ${e.message}")
+            ValidationResult.Invalid("HYSTERIA2_CONFIG_INVALID")
         }
     }
 
