@@ -25,7 +25,7 @@ class AmneziaWgEngineAdapter : EngineAdapter {
             val configText = String(configuration.opaquePayload, Charsets.UTF_8)
             AmneziaWgConfigParser.validate(configText)
         } catch (e: Exception) {
-            ValidationResult.Invalid("Failed to decode configuration payload: ${e.message}")
+            ValidationResult.Invalid("AMNEZIA_CONFIG_INVALID")
         }
     }
 
