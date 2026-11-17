@@ -22,7 +22,7 @@ class WarpEngineAdapter : EngineAdapter {
     )
 
     override suspend fun validate(configuration: EngineConfiguration): ValidationResult {
-        return ValidationResult.Valid
+        return ValidationResult.Invalid("ENGINE_RUNTIME_NOT_IMPLEMENTED")
     }
 
     override suspend fun connect(
