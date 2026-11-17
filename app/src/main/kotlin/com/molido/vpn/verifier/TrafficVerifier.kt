@@ -18,8 +18,9 @@ interface TrafficVerifier {
 
 class NetworkTrafficVerifier(
     private val probeHosts: List<Pair<String, Int>> = listOf(
-        Pair("1.1.1.1", 53),
-        Pair("8.8.8.8", 53)
+        Pair("1.1.1.1", 443),
+        Pair("1.0.0.1", 443),
+        Pair("8.8.8.8", 443)
     )
 ) : TrafficVerifier {
     override suspend fun verify(timeoutMillis: Long): VerificationResult = withContext(Dispatchers.IO) {

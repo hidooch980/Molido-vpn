@@ -7,15 +7,6 @@ import org.junit.Test
 class BatchPingTesterTest {
 
     @Test
-    fun extractEndpointFromHy2Config() {
-        val hy2Uri = "hy2://secret@185.190.140.5:443/?sni=test#Test"
-        val endpoint = BatchPingTester.extractEndpoint("hysteria2", hy2Uri)
-
-        assertEquals("185.190.140.5", endpoint.first)
-        assertEquals(443, endpoint.second)
-    }
-
-    @Test
     fun extractEndpointFromVlessConfig() {
         val vlessUri = "vless://uuid@104.16.1.1:8443?security=none#VlessNode"
         val endpoint = BatchPingTester.extractEndpoint("xray", vlessUri)

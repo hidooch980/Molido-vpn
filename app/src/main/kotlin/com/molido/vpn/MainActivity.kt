@@ -11,6 +11,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -34,20 +46,18 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.VpnLock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -56,41 +66,46 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
@@ -193,7 +208,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
             onDismissRequest = { viewModel.dismissUpdateDialog() },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = Color(0xFF42E2D7))
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = Color(0xFF35D6CD))
                     Spacer(Modifier.width(8.dp))
                     Text(strings.updateAvailable, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 }
@@ -218,9 +233,9 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         UpdateManager.openDownloadPage(context, info.downloadUrl)
                         viewModel.dismissUpdateDialog()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
                 ) {
-                    Text(strings.updateDownloadAction)
+                    Text(strings.updateDownloadAction, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -228,7 +243,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     Text(strings.updateLaterAction, color = Color(0xFF94A3B8))
                 }
             },
-            containerColor = Color(0xFF0F242C),
+            containerColor = Color(0xFF10242D),
             shape = RoundedCornerShape(16.dp)
         )
     }
@@ -242,80 +257,113 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 drawerContentColor = Color(0xFFE8F7F8)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp))
-                                .background(Color(0xFF073B42)).border(1.dp, Color(0xFF20D6D2), RoundedCornerShape(15.dp)),
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF10242D))
+                                .border(1.dp, Color(0xFF35D6CD), RoundedCornerShape(14.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.VpnLock, contentDescription = null, tint = Color(0xFF36E0D5), modifier = Modifier.size(26.dp))
+                            Icon(
+                                Icons.Default.VpnLock,
+                                contentDescription = null,
+                                tint = Color(0xFF35D6CD),
+                                modifier = Modifier.size(26.dp)
+                            )
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("MOLIDO", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, letterSpacing = 2.sp)
-                            Text("VPN  •  AI SECURITY", color = Color(0xFF48CFC8), fontSize = 10.sp, letterSpacing = 1.sp)
+                            Text(
+                                "MolidoVPN",
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 20.sp
+                            )
+                            Text(
+                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی و امن" else "Private & Secure Connection",
+                                color = Color(0xFF35D6CD),
+                                fontSize = 11.sp
+                            )
                         }
                     }
-                    Spacer(Modifier.height(14.dp))
-                    Text(if (language == AppLanguage.PERSIAN) "منوی اصلی" else "MAIN MENU", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        if (language == AppLanguage.PERSIAN) "منوی اصلی" else "MAIN MENU",
+                        color = Color(0xFF6F9299),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                     NavigationDrawerItem(
-                        label = { Text(if (language == AppLanguage.PERSIAN) "داشبورد" else "Dashboard", fontWeight = FontWeight.SemiBold) },
+                        label = { Text(strings.tabDashboard, fontWeight = FontWeight.SemiBold) },
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0; scope.launch { drawerState.close() } },
+                        onClick = {
+                            selectedTab = 0
+                            scope.launch { drawerState.close() }
+                        },
                         icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF103C40),
-                            selectedIconColor = Color(0xFF42E2D7),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF10242D),
+                            selectedIconColor = Color(0xFF35D6CD),
                             selectedTextColor = Color.White,
-                            unselectedIconColor = Color(0xFF91AEB2),
+                            unselectedIconColor = Color(0xFF6F9299),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(if (language == AppLanguage.PERSIAN) "سرورها و پروفایل‌ها" else "Servers & Profiles") },
+                        label = { Text(strings.tabServers) },
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1; scope.launch { drawerState.close() } },
+                        onClick = {
+                            selectedTab = 1
+                            scope.launch { drawerState.close() }
+                        },
                         icon = { Icon(Icons.Default.Storage, contentDescription = null) },
-                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
-                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF10242D),
+                            selectedIconColor = Color(0xFF35D6CD),
+                            selectedTextColor = Color.White,
+                            unselectedIconColor = Color(0xFF6F9299),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(if (language == AppLanguage.PERSIAN) "امنیت و تنظیمات" else "Security & Settings") },
+                        label = { Text(strings.tabSettings) },
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2; scope.launch { drawerState.close() } },
-                        icon = { Icon(Icons.Default.Security, contentDescription = null) },
-                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
-                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF91AEB2),
+                        onClick = {
+                            selectedTab = 2
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF10242D),
+                            selectedIconColor = Color(0xFF35D6CD),
+                            selectedTextColor = Color.White,
+                            unselectedIconColor = Color(0xFF6F9299),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
                     NavigationDrawerItem(
-                        label = { Text(if (language == AppLanguage.PERSIAN) "بررسی به‌روزرسانی برنامه" else "Check for Updates") },
+                        label = { Text(strings.updateTitle) },
                         selected = false,
                         onClick = {
                             viewModel.checkForUpdates(silent = false)
                             scope.launch { drawerState.close() }
                         },
                         icon = { Icon(Icons.Default.SystemUpdate, contentDescription = null) },
-                        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color(0xFF103C40), selectedIconColor = Color(0xFF42E2D7),
-                            selectedTextColor = Color.White, unselectedIconColor = Color(0xFF42E2D7),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF10242D),
+                            selectedIconColor = Color(0xFF35D6CD),
+                            selectedTextColor = Color.White,
+                            unselectedIconColor = Color(0xFF35D6CD),
                             unselectedTextColor = Color(0xFFD3E2E4)
                         )
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Text(if (language == AppLanguage.PERSIAN) "ماژول‌های در حال توسعه" else "IN DEVELOPMENT", color = Color(0xFF6F9299), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    DrawerPlannedItem(Icons.Default.Analytics, if (language == AppLanguage.PERSIAN) "تحلیل و عملکرد" else "Analytics")
-                    DrawerPlannedItem(Icons.Default.AutoAwesome, if (language == AppLanguage.PERSIAN) "مسیریابی هوشمند AI" else "AI Smart Routing")
-                    Spacer(Modifier.height(20.dp))
-                    Text("PREMIUM • PRIVATE • SECURE", color = Color(0xFF3ABFB9), fontSize = 10.sp, letterSpacing = 1.sp)
                 }
             }
         }
@@ -325,22 +373,30 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 TopAppBar(
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = if (language == AppLanguage.PERSIAN) "باز کردن منو" else "Open menu", tint = Color(0xFF43DCD3))
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = if (language == AppLanguage.PERSIAN) "باز کردن منو" else "Open menu",
+                                tint = Color(0xFF35D6CD)
+                            )
                         }
                     },
                     title = {
                         Column {
                             Text(
                                 when (selectedTab) {
-                                    1 -> if (language == AppLanguage.PERSIAN) "سرورها" else "Servers"
-                                    2 -> if (language == AppLanguage.PERSIAN) "امنیت" else "Security"
+                                    1 -> strings.tabServers
+                                    2 -> strings.tabSettings
                                     else -> "MolidoVPN"
                                 },
-                                fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color.White
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 19.sp,
+                                color = Color.White
                             )
                             Text(
-                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی، کنترل هوشمند" else "Private connection • intelligent control",
-                                style = MaterialTheme.typography.bodySmall, color = Color(0xFF48CFC8), fontSize = 10.sp
+                                if (language == AppLanguage.PERSIAN) "اتصال خصوصی و امن" else "Private & Secure Connection",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF35D6CD),
+                                fontSize = 10.sp
                             )
                         }
                     },
@@ -348,28 +404,102 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         IconButton(onClick = {
                             val nextLang = if (language == AppLanguage.PERSIAN) AppLanguage.ENGLISH else AppLanguage.PERSIAN
                             viewModel.setLanguage(nextLang)
-                        }) { Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF43DCD3)) }
+                        }) {
+                            Icon(Icons.Default.Language, contentDescription = "Language", tint = Color(0xFF35D6CD))
+                        }
                         IconButton(onClick = { viewModel.refreshServers() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFFB4CBCD))
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF6F9299))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF07131A))
                 )
             },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = Color(0xFF07131A),
+                    contentColor = Color(0xFFE8F7F8),
+                    tonalElevation = 8.dp
+                ) {
+                    NavigationBarItem(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        icon = { Icon(Icons.Default.Home, contentDescription = strings.tabDashboard) },
+                        label = {
+                            Text(
+                                strings.tabDashboard,
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF35D6CD),
+                            selectedTextColor = Color(0xFF35D6CD),
+                            unselectedIconColor = Color(0xFF6F9299),
+                            unselectedTextColor = Color(0xFF6F9299),
+                            indicatorColor = Color(0xFF10242D)
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        icon = { Icon(Icons.Default.Storage, contentDescription = strings.tabServers) },
+                        label = {
+                            Text(
+                                strings.tabServers,
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF35D6CD),
+                            selectedTextColor = Color(0xFF35D6CD),
+                            unselectedIconColor = Color(0xFF6F9299),
+                            unselectedTextColor = Color(0xFF6F9299),
+                            indicatorColor = Color(0xFF10242D)
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = strings.tabSettings) },
+                        label = {
+                            Text(
+                                strings.tabSettings,
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFF35D6CD),
+                            selectedTextColor = Color(0xFF35D6CD),
+                            unselectedIconColor = Color(0xFF6F9299),
+                            unselectedTextColor = Color(0xFF6F9299),
+                            indicatorColor = Color(0xFF10242D)
+                        )
+                    )
+                }
+            },
             containerColor = Color(0xFF07131A)
         ) { paddingValues ->
-            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
                 when (selectedTab) {
                     0 -> ConnectTab(
-                        strings = strings, connectionState = connectionState, diagnostics = diagnostics,
-                        killSwitchEnabled = killSwitchEnabled,
+                        strings = strings,
+                        connectionState = connectionState,
+                        diagnostics = diagnostics,
                         selectedEngine = selectedEngineId,
                         onSelectEngine = { viewModel.setSelectedEngine(it) },
                         onConnect = { viewModel.onConnectClicked(context) },
                         onDisconnect = { viewModel.onDisconnectClicked() }
                     )
                     1 -> ServersTab(
-                        strings = strings, servers = servers, isFetching = isFetchingCommunity,
+                        strings = strings,
+                        servers = servers,
+                        isFetching = isFetchingCommunity,
                         isPinging = isPinging,
                         onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
                         onPingAll = { viewModel.pingAllServers() },
@@ -377,22 +507,37 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         onImportClipboard = {
                             val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val text = clip.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                            if (text.isNotBlank()) viewModel.importFromRawText(text)
-                            else Toast.makeText(context, if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                            if (text.isNotBlank()) {
+                                viewModel.importFromRawText(text)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    if (language == AppLanguage.PERSIAN) "کلیپ‌بورد خالی است" else "Clipboard is empty",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     )
                     2 -> SecuritySettingsTab(
-                        strings = strings, currentLanguage = language,
+                        strings = strings,
+                        currentLanguage = language,
                         onSelectLanguage = { viewModel.setLanguage(it) },
-                        killSwitch = killSwitchEnabled, onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
+                        killSwitch = killSwitchEnabled,
+                        onToggleKillSwitch = { viewModel.toggleKillSwitch(it) },
                         onOpenAndroidSettings = {
-                            try { context.startActivity(KillSwitchManager.createVpnSettingsIntent()) }
-                            catch (_: Exception) { Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show() }
+                            try {
+                                context.startActivity(KillSwitchManager.createVpnSettingsIntent())
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Cannot open VPN settings", Toast.LENGTH_SHORT).show()
+                            }
                         },
-                        selectedDns = selectedDns, onSelectDns = { viewModel.setDnsProvider(it) },
-                        splitApps = splitApps, installedApps = installedApps,
+                        selectedDns = selectedDns,
+                        onSelectDns = { viewModel.setDnsProvider(it) },
+                        splitApps = splitApps,
+                        installedApps = installedApps,
                         onToggleApp = { viewModel.toggleAppExclusion(it) },
-                        activeConfigText = activeConfigText, onUpdateConfig = { viewModel.updateActiveConfig(it) },
+                        activeConfigText = activeConfigText,
+                        onUpdateConfig = { viewModel.updateActiveConfig(it) },
                         isScanningCleanIps = isScanningCleanIps,
                         cleanIps = cleanIps,
                         onScanCleanIps = { viewModel.scanCleanIps() },
@@ -407,259 +552,470 @@ fun MainAppScreen(viewModel: VpnViewModel) {
 }
 
 @Composable
-private fun DrawerPlannedItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = Color(0xFF54777D), modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(title, color = Color(0xFF78969B), fontSize = 13.sp)
-        Spacer(Modifier.weight(1f))
-        Text("SOON", color = Color(0xFF54777D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
 fun ConnectTab(
     strings: AppStrings,
     connectionState: ConnectionState,
     diagnostics: ConnectionDiagnostics,
-    killSwitchEnabled: Boolean,
     selectedEngine: String,
     onSelectEngine: (String) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
-    val isVerified = connectionState is ConnectionState.Connected
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        item { Spacer(Modifier.height(8.dp)) }
+
+        // Status badge at top
         item {
-            Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp)) {
-                Text(
-                    if (strings.appName == "MolidoVPN") "اتصال امن شما" else "Your secure connection",
-                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp
-                )
-                Text(
-                    if (strings.appName == "MolidoVPN") "وضعیت تونل و اطلاعات شبکه در یک نگاه" else "Tunnel and network status at a glance",
-                    color = Color(0xFF78999E), fontSize = 12.sp
-                )
-            }
+            StatusBadge(strings = strings, connectionState = connectionState)
         }
+
+        // Big beautiful animated circular connect button in the center
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B2028)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF15545A))
+            CircularConnectButton(
+                connectionState = connectionState,
+                onConnect = onConnect,
+                onDisconnect = onDisconnect
+            )
+        }
+
+        // When connected: show real-time stats
+        item {
+            AnimatedVisibility(
+                visible = connectionState is ConnectionState.Connected,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Box(
-                        modifier = Modifier.align(Alignment.TopEnd).padding(18.dp).size(92.dp)
-                            .clip(RoundedCornerShape(50.dp)).background(Color(0xFF12B8B0).copy(alpha = 0.07f))
-                    )
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (strings.appName == "MolidoVPN") "وضعیت محافظت" else "PROTECTION STATUS", color = Color(0xFF9BB9BC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (isVerified) Color(0xFF0C594F) else Color(0xFF493A20)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-                                Text(if (isVerified) "VERIFIED" else "NOT CONNECTED", color = if (isVerified) Color(0xFF5BE0BD) else Color(0xFFFFCF70), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        StatusCard(strings, connectionState, selectedEngine, onConnect, onDisconnect)
-                    }
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                DashboardMetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = if (strings.appName == "MolidoVPN") "IP خروجی" else "EXIT IP",
-                    value = "—",
-                    detail = if (isVerified) "در انتظار بررسی IP" else "پس از اتصال تأییدشده",
-                    icon = Icons.Default.Security
-                )
-                DashboardMetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = if (strings.appName == "MolidoVPN") "موقعیت سرور" else "SERVER LOCATION",
-                    value = "—",
-                    detail = "داده واقعی هنوز موجود نیست",
-                    icon = Icons.Default.Language
+                RealTimeStatsCard(
+                    strings = strings,
+                    diagnostics = diagnostics
                 )
             }
         }
+
+        // Protocol selector chips below
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(if (strings.appName == "MolidoVPN") "عملکرد شبکه" else "NETWORK PERFORMANCE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        DashboardMetricCard(Modifier.weight(1f), "PING", diagnostics.lastLatencyMillis?.takeIf { isVerified }?.let { "$it ms" } ?: "—", "اندازه‌گیری واقعی", Icons.Default.Speed)
-                        DashboardMetricCard(Modifier.weight(1f), "DOWNLOAD", if (isVerified) "${diagnostics.bytesIn / 1024} KB" else "—", "ترافیک تونل", Icons.Default.CloudDownload)
-                        DashboardMetricCard(Modifier.weight(1f), "UPLOAD", if (isVerified) "${diagnostics.bytesOut / 1024} KB" else "—", "ترافیک تونل", Icons.Default.Sync)
-                    }
-                }
-            }
+            ProtocolSelector(
+                strings = strings,
+                selectedEngine = selectedEngine,
+                onSelectEngine = onSelectEngine
+            )
         }
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1C25)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1A3942))
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
-                    DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
-                    DashboardSecurityRow("Kill Switch", if (killSwitchEnabled) "تنظیم روشن است؛ آزمون عملکرد لازم است" else "تنظیم خاموش است", needsTest = true)
-                }
-            }
-        }
-        item {
-            SmartAutoEngineSelector(strings = strings, selectedEngine = selectedEngine, onSelect = onSelectEngine)
-        }
-        item { Spacer(Modifier.height(18.dp)) }
+
+        item { Spacer(Modifier.height(16.dp)) }
     }
 }
 
 @Composable
-private fun DashboardMetricCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String,
-    detail: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+fun CircularConnectButton(
+    connectionState: ConnectionState,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isConnected = connectionState is ConnectionState.Connected
+    val isBusy = connectionState is ConnectionState.Preparing ||
+        connectionState is ConnectionState.Connecting ||
+        connectionState is ConnectionState.Verifying
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulseTransition")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isBusy) 1.10f else if (isConnected) 1.05f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = if (isConnected) 0.5f else if (isBusy) 0.7f else 0.15f,
+        targetValue = if (isConnected || isBusy) 0.08f else 0.02f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    val accentColor = when {
+        isConnected -> Color(0xFF35D6CD)
+        isBusy -> Color(0xFFF59E0B)
+        else -> Color(0xFF35D6CD)
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier.size(200.dp)
+    ) {
+        // Outer animated pulsing glow
+        if (isConnected || isBusy) {
+            Box(
+                modifier = Modifier
+                    .size(196.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                    }
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = pulseAlpha))
+            )
+        }
+
+        // Outer ring border
+        Box(
+            modifier = Modifier
+                .size(175.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF0B1E26))
+                .border(
+                    width = if (isConnected) 2.dp else 1.dp,
+                    color = if (isConnected) Color(0xFF35D6CD) else if (isBusy) Color(0xFFF59E0B) else Color(0xFF1A3942),
+                    shape = CircleShape
+                )
+        )
+
+        // Main circular button
+        Box(
+            modifier = Modifier
+                .size(146.dp)
+                .clip(CircleShape)
+                .background(
+                    if (isConnected) Brush.radialGradient(
+                        colors = listOf(Color(0xFF15444D), Color(0xFF10242D))
+                    ) else Brush.radialGradient(
+                        colors = listOf(Color(0xFF16323D), Color(0xFF0B1E26))
+                    )
+                )
+                .border(
+                    width = 2.dp,
+                    color = if (isConnected) Color(0xFF35D6CD) else if (isBusy) Color(0xFFF59E0B) else Color(0xFF1F4E58),
+                    shape = CircleShape
+                )
+                .clickable {
+                    if (isConnected || isBusy) onDisconnect() else onConnect()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (isBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = Color(0xFFF59E0B),
+                        strokeWidth = 3.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = if (isConnected) "Disconnect" else "Connect",
+                        tint = if (isConnected) Color(0xFF35D6CD) else Color(0xFFE8F7F8),
+                        modifier = Modifier.size(44.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = when {
+                        isConnected -> "DISCONNECT"
+                        isBusy -> "CONNECTING"
+                        else -> "CONNECT"
+                    },
+                    color = if (isConnected) Color(0xFF35D6CD) else Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp
+                )
+            }
+        }
+    }
+}
+
+private data class StatusBadgeStyle(
+    val bg: Color,
+    val text: String,
+    val icon: ImageVector,
+    val color: Color
+)
+
+@Composable
+fun StatusBadge(strings: AppStrings, connectionState: ConnectionState) {
+    val style = when (connectionState) {
+        is ConnectionState.Connected -> StatusBadgeStyle(
+            Color(0xFF10242D),
+            strings.connectedVerified,
+            Icons.Default.CheckCircle,
+            Color(0xFF35D6CD)
+        )
+        is ConnectionState.Verifying -> StatusBadgeStyle(
+            Color(0xFF10242D),
+            strings.verifying,
+            Icons.Default.Lock,
+            Color(0xFFF59E0B)
+        )
+        is ConnectionState.Connecting -> StatusBadgeStyle(
+            Color(0xFF10242D),
+            "${strings.connecting} (${connectionState.engineId})",
+            Icons.Default.Speed,
+            Color(0xFF35D6CD)
+        )
+        is ConnectionState.Preparing -> StatusBadgeStyle(
+            Color(0xFF10242D),
+            strings.connecting,
+            Icons.Default.Info,
+            Color(0xFF94A3B8)
+        )
+        is ConnectionState.Recovering -> StatusBadgeStyle(
+            Color(0xFF10242D),
+            strings.verifying,
+            Icons.Default.Warning,
+            Color(0xFFF59E0B)
+        )
+        is ConnectionState.Failed -> StatusBadgeStyle(
+            Color(0xFF2D1515),
+            "${strings.failedPrefix}${connectionState.reasonCode}",
+            Icons.Default.Warning,
+            Color(0xFFEF4444)
+        )
+        is ConnectionState.Idle -> StatusBadgeStyle(
+            Color(0xFF10242D),
+            strings.disconnected,
+            Icons.Default.PowerSettingsNew,
+            Color(0xFF6F9299)
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(style.bg)
+            .border(1.dp, style.color.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = style.icon,
+                contentDescription = null,
+                tint = style.color,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                style.text,
+                color = style.color,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun RealTimeStatsCard(
+    strings: AppStrings,
+    diagnostics: ConnectionDiagnostics
 ) {
     Card(
-        modifier = modifier,
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1B4650))
+        border = BorderStroke(1.dp, Color(0xFF1A3942))
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = Color(0xFF42D8D0), modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(5.dp))
-                Text(title, color = Color(0xFF8BAEB2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            }
-            Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text(detail, color = Color(0xFF718F94), fontSize = 9.sp)
-        }
-    }
-}
-
-@Composable
-private fun DashboardSecurityRow(title: String, detail: String, needsTest: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF36CFC7), modifier = Modifier.size(17.dp))
-        Spacer(Modifier.width(9.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = Color(0xFFE5F1F2), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Text(detail, color = Color(0xFF7F9DA1), fontSize = 10.sp)
-        }
-        Text(if (needsTest) "TEST" else "PENDING", color = Color(0xFFFFC86A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-fun SmartAutoEngineSelector(
-    strings: AppStrings,
-    selectedEngine: String,
-    onSelect: (String) -> Unit
-) {
-    Column {
-        Text(strings.enginesTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Smart Connect Card / Chip
-        Card(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onSelect("auto") },
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (selectedEngine == "auto") Color(0xFF0369A1).copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface
-            ),
-            border = if (selectedEngine == "auto") androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF38BDF8)) else null
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            LiveStatItem(
+                icon = Icons.Default.Speed,
+                label = strings.latencyLabel,
+                value = diagnostics.lastLatencyMillis?.let { "$it ms" } ?: "—",
+                color = Color(0xFF35D6CD)
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(36.dp)
+                    .background(Color(0xFF1A3942))
+            )
+            LiveStatItem(
+                icon = Icons.Default.CloudDownload,
+                label = strings.downloadLabel,
+                value = "${diagnostics.bytesIn / 1024} KB",
+                color = Color(0xFF38BDF8)
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(36.dp)
+                    .background(Color(0xFF1A3942))
+            )
+            LiveStatItem(
+                icon = Icons.Default.Sync,
+                label = strings.uploadLabel,
+                value = "${diagnostics.bytesOut / 1024} KB",
+                color = Color(0xFF20B8B2)
+            )
+        }
+    }
+}
+
+@Composable
+fun LiveStatItem(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    color: Color
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                label,
+                color = Color(0xFF6F9299),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Text(
+            value,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp
+        )
+    }
+}
+
+@Composable
+fun ProtocolSelector(
+    strings: AppStrings,
+    selectedEngine: String,
+    onSelectEngine: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+        border = BorderStroke(1.dp, Color(0xFF1A3942))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = strings.enginesTitle,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = if (selectedEngine == "auto") "AUTO" else selectedEngine.uppercase(),
+                    color = Color(0xFF35D6CD),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Auto connect Card
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .clickable { onSelectEngine("auto") },
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selectedEngine == "auto") Color(0xFF0D323A) else Color(0xFF07131A)
+                ),
+                border = if (selectedEngine == "auto") BorderStroke(1.5.dp, Color(0xFF35D6CD)) else BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(strings.autoConnect, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                        Text(strings.autoConnectDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFF35D6CD),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(strings.autoConnect, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                            Text(strings.autoConnectDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299), fontSize = 10.sp)
+                        }
+                    }
+                    if (selectedEngine == "auto") {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF35D6CD),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
-                if (selectedEngine == "auto") {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Protocol Chips: WARP, Xray, AmneziaWG, WireGuard
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "warp" to "WARP",
+                    "xray" to "Xray",
+                    "amnezia" to "AmneziaWG",
+                    "wireguard" to "WireGuard"
+                ).forEach { (id, name) ->
+                    val isSelected = selectedEngine == id
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) Color(0xFF35D6CD) else Color(0xFF07131A))
+                            .border(
+                                1.dp,
+                                if (isSelected) Color(0xFF35D6CD) else Color(0xFF1A3942),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onSelectEngine(id) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = name,
+                            color = if (isSelected) Color(0xFF061418) else Color(0xFFE8F7F8),
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Protocol Specific Chips
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterChip(
-                selected = selectedEngine == "warp",
-                onClick = { onSelect("warp") },
-                label = { Text("WARP") },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = selectedEngine == "hysteria2",
-                onClick = { onSelect("hysteria2") },
-                label = { Text("Hysteria 2") },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = selectedEngine == "amnezia",
-                onClick = { onSelect("amnezia") },
-                label = { Text("AmneziaWG") },
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterChip(
-                selected = selectedEngine == "xray",
-                onClick = { onSelect("xray") },
-                label = { Text("Xray / VLESS") },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = selectedEngine == "wireguard",
-                onClick = { onSelect("wireguard") },
-                label = { Text("WireGuard") },
-                modifier = Modifier.weight(1f)
-            )
         }
     }
 }
@@ -692,16 +1048,16 @@ fun ServersTab(
                         onClick = onUpdateFromGithub,
                         enabled = !isFetching,
                         modifier = Modifier.weight(1.2f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
                     ) {
                         if (isFetching) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF061418), strokeWidth = 2.dp)
                             Spacer(Modifier.width(6.dp))
-                            Text(strings.updatingGithub, fontSize = 11.sp)
+                            Text(strings.updatingGithub, fontSize = 11.sp, color = Color(0xFF061418))
                         } else {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF061418))
                             Spacer(Modifier.width(6.dp))
-                            Text(strings.updateFromGithub, fontSize = 12.sp)
+                            Text(strings.updateFromGithub, fontSize = 12.sp, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -709,26 +1065,29 @@ fun ServersTab(
                     OutlinedButton(
                         onClick = onPingAll,
                         enabled = !isPinging,
-                        modifier = Modifier.weight(1.1f)
+                        modifier = Modifier.weight(1.1f),
+                        border = BorderStroke(1.dp, Color(0xFF35D6CD))
                     ) {
                         if (isPinging) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF38BDF8), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF35D6CD), strokeWidth = 2.dp)
                             Spacer(Modifier.width(6.dp))
-                            Text(strings.pingingStatus, fontSize = 11.sp)
+                            Text(strings.pingingStatus, fontSize = 11.sp, color = Color(0xFF35D6CD))
                         } else {
-                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF35D6CD))
                             Spacer(Modifier.width(4.dp))
-                            Text(strings.pingAllButton, fontSize = 12.sp)
+                            Text(strings.pingAllButton, fontSize = 12.sp, color = Color(0xFF35D6CD))
                         }
                     }
 
+                    // Import Clipboard Button
                     OutlinedButton(
                         onClick = onImportClipboard,
-                        modifier = Modifier.weight(0.9f)
+                        modifier = Modifier.weight(0.9f),
+                        border = BorderStroke(1.dp, Color(0xFF1A3942))
                     ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF6F9299))
                         Spacer(Modifier.width(4.dp))
-                        Text(strings.clipboardButton, fontSize = 12.sp)
+                        Text(strings.clipboardButton, fontSize = 12.sp, color = Color(0xFFE8F7F8))
                     }
                 }
             }
@@ -738,7 +1097,8 @@ fun ServersTab(
             Text(
                 strings.freeServersTitle,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = Color.White
             )
         }
 
@@ -760,8 +1120,9 @@ fun ServersTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onSelectServer(server) },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Row(
                     modifier = Modifier
@@ -775,22 +1136,22 @@ fun ServersTab(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(server.name, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Text(server.name, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = Color.White)
                                 Spacer(Modifier.width(6.dp))
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF10B981).copy(alpha = 0.2f))
+                                        .background(Color(0xFF35D6CD).copy(alpha = 0.2f))
                                         .padding(horizontal = 5.dp, vertical = 1.dp)
                                 ) {
-                                    Text("FREE", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                    Text("FREE", color = Color(0xFF35D6CD), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     "${server.engineId.uppercase()} • ",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF94A3B8)
+                                    color = Color(0xFF6F9299)
                                 )
                                 Text(
                                     latencyText,
@@ -805,12 +1166,12 @@ fun ServersTab(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF38BDF8).copy(alpha = 0.15f))
+                            .background(Color(0xFF35D6CD).copy(alpha = 0.15f))
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
                             "${strings.scoreLabel} ${server.score.score.toInt()}",
-                            color = Color(0xFF38BDF8),
+                            color = Color(0xFF35D6CD),
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
@@ -853,8 +1214,9 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Row(
                     modifier = Modifier
@@ -864,8 +1226,8 @@ fun SecuritySettingsTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text(strings.languageLabel, fontWeight = FontWeight.Bold)
-                        Text(currentLanguage.displayName, style = MaterialTheme.typography.bodySmall, color = Color(0xFF38BDF8))
+                        Text(strings.languageLabel, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(currentLanguage.displayName, style = MaterialTheme.typography.bodySmall, color = Color(0xFF35D6CD))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -887,8 +1249,9 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -897,24 +1260,31 @@ fun SecuritySettingsTab(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(strings.killSwitchTitle, fontWeight = FontWeight.Bold)
+                            Text(strings.killSwitchTitle, fontWeight = FontWeight.Bold, color = Color.White)
                             Text(
                                 strings.killSwitchDesc,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF94A3B8)
+                                color = Color(0xFF6F9299)
                             )
                         }
-                        Switch(checked = killSwitch, onCheckedChange = onToggleKillSwitch)
+                        Switch(
+                            checked = killSwitch,
+                            onCheckedChange = onToggleKillSwitch,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF061418),
+                                checkedTrackColor = Color(0xFF35D6CD)
+                            )
+                        )
                     }
                     Spacer(Modifier.height(10.dp))
                     Button(
                         onClick = onOpenAndroidSettings,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3942))
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF35D6CD))
                         Spacer(Modifier.width(8.dp))
-                        Text(strings.alwaysOnButton, fontSize = 12.sp)
+                        Text(strings.alwaysOnButton, fontSize = 12.sp, color = Color.White)
                     }
                 }
             }
@@ -924,12 +1294,13 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.dohTitle, fontWeight = FontWeight.Bold)
-                    Text(strings.dohDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                    Text(strings.dohTitle, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(strings.dohDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
                     Spacer(Modifier.height(10.dp))
                     for (provider in DohDnsResolver.PROVIDERS) {
                         Row(
@@ -942,13 +1313,13 @@ fun SecuritySettingsTab(
                             Icon(
                                 if (selectedDns == provider.id) Icons.Default.CheckCircle else Icons.Default.Dns,
                                 contentDescription = null,
-                                tint = if (selectedDns == provider.id) Color(0xFF38BDF8) else Color(0xFF64748B),
+                                tint = if (selectedDns == provider.id) Color(0xFF35D6CD) else Color(0xFF6F9299),
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text(provider.name, fontWeight = FontWeight.Medium)
-                                Text(provider.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                                Text(provider.name, fontWeight = FontWeight.Medium, color = Color.White)
+                                Text(provider.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
                             }
                         }
                     }
@@ -960,27 +1331,28 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.cleanIpTitle, fontWeight = FontWeight.Bold)
-                    Text(strings.cleanIpDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                    Text(strings.cleanIpTitle, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(strings.cleanIpDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
                     Spacer(Modifier.height(10.dp))
                     Button(
                         onClick = onScanCleanIps,
                         enabled = !isScanningCleanIps,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D6CD))
                     ) {
                         if (isScanningCleanIps) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF061418), strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text(strings.cleanIpScanning, fontSize = 12.sp)
+                            Text(strings.cleanIpScanning, fontSize = 12.sp, color = Color(0xFF061418))
                         } else {
-                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF061418))
                             Spacer(Modifier.width(8.dp))
-                            Text(strings.cleanIpAction, fontSize = 13.sp)
+                            Text(strings.cleanIpAction, fontSize = 13.sp, color = Color(0xFF061418), fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -989,7 +1361,7 @@ fun SecuritySettingsTab(
                         Text(
                             if (currentLanguage == AppLanguage.PERSIAN) "آی‌پی‌های تمیز با کمترین پینگ:" else "Discovered Clean Endpoints:",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF38BDF8),
+                            color = Color(0xFF35D6CD),
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(6.dp))
@@ -1002,12 +1374,12 @@ fun SecuritySettingsTab(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(clean.ip, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(clean.ip, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White)
                                     Spacer(Modifier.width(8.dp))
                                     Text("${clean.latencyMillis} ms", fontSize = 11.sp, color = Color(0xFF10B981), fontWeight = FontWeight.Bold)
                                 }
                                 TextButton(onClick = { onApplyCleanIp(clean.ip) }) {
-                                    Text(strings.cleanIpApply, fontSize = 12.sp, color = Color(0xFF38BDF8))
+                                    Text(strings.cleanIpApply, fontSize = 12.sp, color = Color(0xFF35D6CD))
                                 }
                             }
                         }
@@ -1020,14 +1392,15 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.splitTunnelTitle, fontWeight = FontWeight.Bold)
-                    Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                    Text(strings.splitTunnelTitle, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(strings.splitTunnelDesc, style = MaterialTheme.typography.bodySmall, color = Color(0xFF6F9299))
                     Spacer(Modifier.height(8.dp))
-                    Text("${splitApps.size} apps bypassed", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("${splitApps.size} apps bypassed", color = Color(0xFF35D6CD), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
             }
         }
@@ -1036,8 +1409,9 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -1046,22 +1420,22 @@ fun SecuritySettingsTab(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(strings.updateTitle, fontWeight = FontWeight.Bold)
-                            Text("${strings.currentVersionLabel}: v${UpdateManager.CURRENT_VERSION}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF38BDF8))
+                            Text(strings.updateTitle, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("${strings.currentVersionLabel}: v${UpdateManager.CURRENT_VERSION}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF35D6CD))
                         }
                         Button(
                             onClick = onCheckUpdate,
                             enabled = !isCheckingUpdate,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3942))
                         ) {
                             if (isCheckingUpdate) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF35D6CD), strokeWidth = 2.dp)
                                 Spacer(Modifier.width(6.dp))
-                                Text(strings.updateChecking, fontSize = 11.sp)
+                                Text(strings.updateChecking, fontSize = 11.sp, color = Color(0xFF35D6CD))
                             } else {
-                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF35D6CD))
                                 Spacer(Modifier.width(6.dp))
-                                Text(strings.updateCheckAction, fontSize = 12.sp)
+                                Text(strings.updateCheckAction, fontSize = 12.sp, color = Color.White)
                             }
                         }
                     }
@@ -1073,11 +1447,12 @@ fun SecuritySettingsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10242D)),
+                border = BorderStroke(1.dp, Color(0xFF1A3942))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(strings.activeConfigTitle, fontWeight = FontWeight.Bold)
+                    Text(strings.activeConfigTitle, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = activeConfigText,
@@ -1092,173 +1467,5 @@ fun SecuritySettingsTab(
         }
 
         item { Spacer(Modifier.height(24.dp)) }
-    }
-}
-
-@Composable
-fun StatusCard(
-    strings: AppStrings,
-    connectionState: ConnectionState,
-    selectedEngine: String,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            StatusBadge(strings = strings, connectionState = connectionState)
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            val isConnected = connectionState is ConnectionState.Connected
-            val isBusy = connectionState is ConnectionState.Preparing ||
-                connectionState is ConnectionState.Connecting ||
-                connectionState is ConnectionState.Verifying
-
-            val buttonColor = when {
-                isConnected -> Color(0xFFEF4444)
-                isBusy -> Color(0xFFF59E0B)
-                else -> MaterialTheme.colorScheme.primary
-            }
-
-            Button(
-                onClick = {
-                    if (isConnected || isBusy) onDisconnect() else onConnect()
-                },
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = buttonColor)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isBusy) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            when (connectionState) {
-                                is ConnectionState.Preparing -> strings.connecting
-                                is ConnectionState.Connecting -> strings.connecting
-                                is ConnectionState.Verifying -> strings.verifying
-                                else -> strings.connecting
-                            },
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.PowerSettingsNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        val engineLabel = if (selectedEngine == "auto") "AUTO" else selectedEngine.uppercase()
-                        Text(
-                            if (isConnected) strings.disconnectAction else "${strings.connectAction} ($engineLabel)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusBadge(strings: AppStrings, connectionState: ConnectionState) {
-    val (badgeBg, badgeText, badgeIcon) = when (connectionState) {
-        is ConnectionState.Connected -> Triple(
-            Color(0xFF10B981),
-            strings.connectedVerified,
-            Icons.Default.CheckCircle
-        )
-        is ConnectionState.Verifying -> Triple(
-            Color(0xFFF59E0B),
-            strings.verifying,
-            Icons.Default.Lock
-        )
-        is ConnectionState.Connecting -> Triple(
-            Color(0xFF0284C7),
-            "${strings.connecting} (${connectionState.engineId})",
-            Icons.Default.Speed
-        )
-        is ConnectionState.Preparing -> Triple(
-            Color(0xFF64748B),
-            strings.connecting,
-            Icons.Default.Info
-        )
-        is ConnectionState.Recovering -> Triple(
-            Color(0xFFF59E0B),
-            strings.verifying,
-            Icons.Default.Warning
-        )
-        is ConnectionState.Failed -> Triple(
-            Color(0xFFEF4444),
-            "${strings.failedPrefix}${connectionState.reasonCode}",
-            Icons.Default.Warning
-        )
-        is ConnectionState.Idle -> Triple(
-            Color(0xFF475569),
-            strings.disconnected,
-            Icons.Default.PowerSettingsNew
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(badgeBg.copy(alpha = 0.2f))
-            .border(1.dp, badgeBg, RoundedCornerShape(20.dp))
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = badgeIcon,
-                contentDescription = null,
-                tint = badgeBg,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(badgeText, color = badgeBg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        }
-    }
-}
-
-@Composable
-fun DiagnosticsCard(strings: AppStrings, diagnostics: ConnectionDiagnostics, connectionState: ConnectionState) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(strings.diagnosticsTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                DiagnosticItem(strings.egressVerified, if (connectionState is ConnectionState.Connected) strings.egressVerified else strings.egressPending)
-                DiagnosticItem(strings.latencyLabel, "${diagnostics.lastLatencyMillis ?: 0} ms")
-                DiagnosticItem("${strings.downloadLabel} / ${strings.uploadLabel}", "${diagnostics.bytesIn / 1024}k / ${diagnostics.bytesOut / 1024}k")
-            }
-        }
-    }
-}
-
-@Composable
-fun DiagnosticItem(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(value, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
 }

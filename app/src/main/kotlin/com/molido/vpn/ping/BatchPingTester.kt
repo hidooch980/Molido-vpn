@@ -2,7 +2,6 @@ package com.molido.vpn.ping
 
 import com.molido.vpn.data.FreeServerProfile
 import com.molido.vpn.engine.amnezia.AmneziaWgConfigParser
-import com.molido.vpn.engine.hysteria.Hysteria2ConfigParser
 import com.molido.vpn.engine.wireguard.WireGuardConfigParser
 import com.molido.vpn.engine.xray.VlessConfigParser
 import kotlinx.coroutines.Dispatchers
@@ -79,10 +78,6 @@ object BatchPingTester {
                 }
                 "xray" -> {
                     val config = VlessConfigParser.parse(rawPayload)
-                    Pair(config.server, config.port)
-                }
-                "hysteria2" -> {
-                    val config = Hysteria2ConfigParser.parse(rawPayload)
                     Pair(config.server, config.port)
                 }
                 else -> Pair("1.1.1.1", 443)

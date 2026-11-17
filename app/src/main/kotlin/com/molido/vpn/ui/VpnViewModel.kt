@@ -15,7 +15,6 @@ import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
-import com.molido.vpn.engine.hysteria.Hysteria2EngineAdapter
 import com.molido.vpn.engine.warp.CleanIpResult
 import com.molido.vpn.engine.warp.CleanIpScanner
 import com.molido.vpn.engine.warp.WarpEngineAdapter
@@ -64,9 +63,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val wireguardAdapter = WireGuardEngineAdapter()
     private val amneziaAdapter = AmneziaWgEngineAdapter()
-    private val xrayAdapter = XrayEngineAdapter()
+    private val xrayAdapter = XrayEngineAdapter(application)
     private val warpAdapter = WarpEngineAdapter()
-    private val hysteriaAdapter = Hysteria2EngineAdapter()
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
@@ -75,8 +73,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
             xrayAdapter.id to xrayAdapter,
-            warpAdapter.id to warpAdapter,
-            hysteriaAdapter.id to hysteriaAdapter
+            warpAdapter.id to warpAdapter
         ),
         onVpnInterfaceRequested = { engineId, config ->
             val context = getApplication<Application>()
@@ -271,11 +268,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
         val mockMetrics = mapOf(
             "free-warp-global" to RouteMeasurement("warp", true, 26L, 0.0, 99.0, userPriority = 10),
-            "free-hysteria2-1" to RouteMeasurement("hysteria2", true, 38L, 0.0, 99.0, userPriority = 9),
-            "free-reality-1" to RouteMeasurement("xray", true, 42L, 0.0, 98.0, userPriority = 8),
-            "free-reality-2" to RouteMeasurement("xray", true, 48L, 0.1, 98.0, userPriority = 7),
-            "free-amnezia-1" to RouteMeasurement("amnezia", true, 55L, 0.0, 97.0, userPriority = 6),
-            "free-wireguard-1" to RouteMeasurement("wireguard", true, 68L, 0.5, 95.0, userPriority = 0)
+            "free-xray-sub-1" to RouteMeasurement("xray", true, 42L, 0.0, 95.0, userPriority = 8),
+            "free-xray-sub-2" to RouteMeasurement("xray", true, 48L, 0.1, 94.0, userPriority = 7),
+            "free-xray-sub-3" to RouteMeasurement("xray", true, 55L, 0.0, 93.0, userPriority = 6),
+            "free-amnezia-placeholder" to RouteMeasurement("amnezia", false, null, 100.0, 0.0, userPriority = 0)
         )
 
         val items = freeServers.map { profile ->

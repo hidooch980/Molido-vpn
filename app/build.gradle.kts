@@ -12,8 +12,12 @@ android {
         applicationId = "com.molido.vpn"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
     }
 
     buildTypes {
@@ -21,8 +25,6 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Release signing is intentionally not configured in source control.
-            // Configure it through protected CI secrets after the existing owner key is verified.
         }
     }
 
@@ -47,7 +49,15 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.animation:animation")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // JSON parsing for Xray config & GitHub API
+    implementation("org.json:json:20231013")
+
+    // OkHttp for subscription fetching and WARP registration
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
 }

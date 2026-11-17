@@ -63,6 +63,9 @@ class MolidoVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var handoverMonitor: NetworkHandoverMonitor? = null
     private lateinit var configStore: EncryptedConfigStore
+    private var tunPumpThread: Thread? = null
+    @Volatile
+    private var isPumpRunning = false
 
     override fun onCreate() {
         super.onCreate()
@@ -95,6 +98,8 @@ class MolidoVpnService : VpnService() {
                 isServiceRunning = true
                 activeEngine = engineId
                 updateNotification("Connected via $engineId")
+
+                startTunPacketPump(pfd)
 
                 // Start Handover Monitor
                 handoverMonitor?.stop()
@@ -176,14 +181,8 @@ class MolidoVpnService : VpnService() {
                 }
             }
             "xray" -> {
-                // Xray / VLESS tun mode route mapping
+                // Xray tun mode route mapping
                 builder.setMtu(1500)
-                    .addAddress("172.19.0.1", 30)
-                    .addRoute("0.0.0.0", 0)
-            }
-            "hysteria2" -> {
-                // Hysteria 2 QUIC tun mode route mapping
-                builder.setMtu(1380)
                     .addAddress("172.19.0.1", 30)
                     .addRoute("0.0.0.0", 0)
             }
@@ -202,6 +201,7 @@ class MolidoVpnService : VpnService() {
     }
 
     private fun handleDisconnect() {
+        stopTunPacketPump()
         handoverMonitor?.stop()
         handoverMonitor = null
         try {
@@ -212,6 +212,32 @@ class MolidoVpnService : VpnService() {
         activeEngine = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun startTunPacketPump(pfd: ParcelFileDescriptor) {
+        stopTunPacketPump()
+        isPumpRunning = true
+        tunPumpThread = Thread {
+            val buffer = ByteArray(32768)
+            val inputStream = java.io.FileInputStream(pfd.fileDescriptor)
+            try {
+                while (isPumpRunning && !Thread.currentThread().isInterrupted) {
+                    val read = inputStream.read(buffer)
+                    if (read < 0) break
+                }
+            } catch (_: Exception) {
+            }
+        }.apply {
+            isDaemon = true
+            name = "MolidoTunPump"
+            start()
+        }
+    }
+
+    private fun stopTunPacketPump() {
+        isPumpRunning = false
+        tunPumpThread?.interrupt()
+        tunPumpThread = null
     }
 
     override fun onRevoke() {
@@ -261,7 +287,7 @@ class MolidoVpnService : VpnService() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MolidoVPN")
             .setContentText(statusText)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.molido.vpn.R.drawable.ic_notification)
             .setContentIntent(pendingLaunch)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Disconnect", pendingDisconnect)
             .setOngoing(true)

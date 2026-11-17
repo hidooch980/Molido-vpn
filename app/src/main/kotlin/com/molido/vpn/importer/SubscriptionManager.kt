@@ -19,16 +19,10 @@ object ConfigImporter {
     fun detectAndParse(input: String): ImportedConfig {
         val trimmed = input.trim()
 
-        if (trimmed.startsWith("hy2://", ignoreCase = true) ||
-            trimmed.startsWith("hysteria2://", ignoreCase = true)
-        ) {
-            val name = extractRemark(trimmed) ?: "Imported Hysteria 2 Server"
-            return ImportedConfig(engineId = "hysteria2", name = name, payload = trimmed)
-        }
-
         if (trimmed.startsWith("vless://", ignoreCase = true) ||
             trimmed.startsWith("trojan://", ignoreCase = true) ||
-            trimmed.startsWith("ss://", ignoreCase = true)
+            trimmed.startsWith("ss://", ignoreCase = true) ||
+            trimmed.startsWith("vmess://", ignoreCase = true)
         ) {
             val name = extractRemark(trimmed) ?: "Imported Xray Server"
             return ImportedConfig(engineId = "xray", name = name, payload = trimmed)
@@ -44,7 +38,7 @@ object ConfigImporter {
             return ImportedConfig(engineId = engine, name = name, payload = trimmed)
         }
 
-        throw IllegalArgumentException("Unrecognized configuration format. Please provide a Hysteria 2, WireGuard, Amnezia, VLESS, Trojan, or SS profile.")
+        throw IllegalArgumentException("Unrecognized configuration format. Please provide a valid WireGuard, AmneziaWG, or Xray (VLESS, Trojan, SS) profile.")
     }
 
     private fun extractRemark(uriStr: String): String? {

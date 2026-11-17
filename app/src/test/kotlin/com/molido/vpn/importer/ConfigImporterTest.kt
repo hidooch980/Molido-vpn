@@ -52,11 +52,11 @@ class ConfigImporterTest {
     }
 
     @Test
-    fun detectHysteria2Scheme() {
-        val uri = "hy2://password@example.com:443/?sni=example.com#Hy2Node"
+    fun detectXrayTrojanScheme() {
+        val uri = "trojan://password@example.com:443?security=tls&sni=example.com#TrojanNode"
         val imported = ConfigImporter.detectAndParse(uri)
 
-        assertEquals("hysteria2", imported.engineId)
-        assertEquals("Hy2Node", imported.name)
+        assertEquals("xray", imported.engineId)
+        assertEquals("TrojanNode", imported.name)
     }
 }

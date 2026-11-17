@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#07131A</color>
+    <color name="molido_turquoise">#35D6CD</color>
+    <color name="molido_dark">#07131A</color>
+    <color name="molido_surface">#10242D</color>
+</resources>
