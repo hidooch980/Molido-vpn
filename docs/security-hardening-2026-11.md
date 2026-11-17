@@ -6,7 +6,7 @@
 - VPN adapters for AmneziaWG, Xray, Hysteria 2 and WARP now fail closed with `ENGINE_RUNTIME_NOT_IMPLEMENTED`; they do not emit a false `TransportReady` event or claim a live tunnel.
 - Added unit tests asserting those adapters cannot report readiness before a native transport exists.
 - DNS provider selection rejects unknown provider IDs instead of silently falling back to Cloudflare.
-- DNS labels no longer claim that ordinary resolver IP configuration is DNS-over-HTTPS. The current builder configures resolver IP addresses only; it is not a DoH client.
+- Added an RFC 8484 POST DoH client for app-owned A/AAAA lookups. HTTPS is opened on Android active VPN Network, redirects are disabled, response size and content type are bounded, and DNS transaction/question fields are validated. The VPN builder still configures ordinary DNS IPs; system-wide UDP/53 interception is not implemented.
 - DNS builder errors are no longer swallowed silently.
 - Connection diagnostics return stable error codes rather than exposing raw exception messages that might contain configuration details.
 - WireGuard startup failure attempts to tear down a partially activated backend tunnel before returning a sanitized failure.
@@ -19,10 +19,10 @@
 
 The following are NOT certified by these source changes or by emulator builds:
 
-- Real-device IPv4, IPv6 and DNS leak testing under normal operation and tunnel loss.
+- The independent diagnostic runner now probes IPv4-only and IPv6-only HTTPS endpoints and triggers a random system-resolver query observed by the external bash.ws authoritative test service. Results are not a device certification; an empty resolver response is inconclusive, and the third-party service receives the test nonce, observed resolver IPs and request source IP.
 - RFC 8484 DoH client is implemented for app-owned A/AAAA lookups and binds HTTPS requests to Android active VPN Network. It does not intercept system-wide UDP/53 traffic; the GoBackend TUN still needs a DNS packet proxy before system-wide DoH can be claimed.
 - Android Always-on VPN / lockdown configuration and process-death behavior.
-- Peer handshake, actual packet forwarding, socket protection and reconnect/handover tests on a physical phone.
+- Peer handshake, actual packet forwarding, socket protection and reconnect/handover tests on a physical phone. Validated physical network changes now trigger a fresh VPN-bound egress check; failed checks tear down the session fail-closed.
 - Penetration testing of malformed configuration imports, subscription parsing, local storage, exported components and update delivery.
 - Signed update metadata, APK signature verification, digest validation and anti-rollback.
 - Full dependency/license/SBOM review and device-specific security testing.
