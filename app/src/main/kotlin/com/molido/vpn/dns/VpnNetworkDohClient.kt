@@ -124,7 +124,8 @@ internal object DnsWireMessage {
         require((flags and 0x8000) != 0) { "DOH_NOT_A_RESPONSE" }
         require((flags and 0x7800) == 0) { "DOH_OPCODE_UNSUPPORTED" }
         require((flags and 0x0200) == 0) { "DOH_TRUNCATED_RESPONSE" }
-        require((flags and 0x000f) == 0) { "DOH_DNS_ERROR" }
+        val responseCode = flags and 0x000f
+        require(responseCode == 0 || responseCode == 3) { "DOH_DNS_ERROR" }
         require(readU16(response, 4) == 1) { "DOH_QUESTION_COUNT_INVALID" }
         val end = questionEnd(query)
         require(end == questionEnd(response)) { "DOH_QUESTION_MALFORMED" }
