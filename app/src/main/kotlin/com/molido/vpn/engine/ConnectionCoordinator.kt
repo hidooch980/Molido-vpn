@@ -171,7 +171,7 @@ class ConnectionCoordinator(
         }
     }
 
-    private suspend fun verifyEgressTrafficLocked(engineId: String) {
+    private suspend fun verifyEgressTrafficLocked(engineId: String, recoverOnFailure: Boolean = false) {
         val verification = try {
             trafficVerifier.verify(timeoutMillis = 4_000L)
         } catch (cancelled: CancellationException) {
@@ -193,10 +193,15 @@ class ConnectionCoordinator(
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
             val cleaned = cleanupSessionLocked()
-            dispatch(ConnectionEvent.Fail(
-                if (cleaned) verification.errorMessage ?: "EGRESS_VERIFICATION_FAILED"
+            val failureCode = if (cleaned) verification.errorMessage ?: "EGRESS_VERIFICATION_FAILED"
                 else "TUN_TEARDOWN_FAILED"
-            ))
+            val recoveryConfig = lastActiveConfiguration
+            if (cleaned && recoverOnFailure && recoveryConfig != null) {
+                dispatch(ConnectionEvent.Recover(engineId, failureCode))
+                scheduleRecovery(engineId, recoveryConfig)
+            } else {
+                dispatch(ConnectionEvent.Fail(failureCode))
+            }
         }
     }
 
@@ -240,7 +245,7 @@ class ConnectionCoordinator(
             lifecycleMutex.withLock {
                 val session = currentSession ?: return@withLock
                 if (_state.value is ConnectionState.Connected) {
-                    verifyEgressTrafficLocked(session.engineId)
+                    verifyEgressTrafficLocked(session.engineId, recoverOnFailure = true)
                 }
             }
         }
