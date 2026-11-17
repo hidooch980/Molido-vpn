@@ -115,6 +115,36 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun recoverableEngineFailureDoesNotRecoverWhenTunnelTeardownFails() = runTest {
+        val adapter = RetryDisconnectAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+
+        adapter.eventSink?.invoke(EngineEvent.Failed("TRANSIENT_ENGINE_ERROR", recoverable = true))
+        advanceUntilIdle()
+
+        val failed = coordinator.state.value
+        assertTrue("Teardown failure must remain Failed, not Recovering: $failed", failed is ConnectionState.Failed)
+        assertEquals("TUN_TEARDOWN_FAILED", (failed as ConnectionState.Failed).reasonCode)
+        assertEquals(1, adapter.disconnectCalls)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, adapter.disconnectCalls)
+    }
+
+    @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
         val adapter = TestReadyAdapter()
@@ -142,6 +172,7 @@ class ConnectionCoordinatorTest {
         override val displayName: String = "Retry disconnect test adapter"
         override val capabilities = EngineCapabilities(true, true, true, true, false, false)
         var disconnectCalls = 0
+        var eventSink: ((EngineEvent) -> Unit)? = null
 
         override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
             ValidationResult.Valid
@@ -154,6 +185,7 @@ class ConnectionCoordinatorTest {
             val session = object : EngineSession {
                 override val engineId: String = id
             }
+            eventSink = onEvent
             onEvent(EngineEvent.TransportReady)
             return session
         }
