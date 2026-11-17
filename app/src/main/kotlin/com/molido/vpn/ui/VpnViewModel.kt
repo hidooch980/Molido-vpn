@@ -32,7 +32,6 @@ import com.molido.vpn.policy.SplitTunnelManager
 import com.molido.vpn.update.UpdateInfo
 import com.molido.vpn.update.UpdateManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
-import com.molido.vpn.vpn.MolidoVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -62,7 +61,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val configStore = EncryptedConfigStore(application)
 
-    private val wireguardAdapter = WireGuardEngineAdapter()
+    private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter()
     private val warpAdapter = WarpEngineAdapter()
@@ -70,7 +69,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
-        trafficVerifier = NetworkTrafficVerifier(),
+        trafficVerifier = NetworkTrafficVerifier(application),
         adapters = mapOf(
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
@@ -78,16 +77,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             warpAdapter.id to warpAdapter,
             hysteriaAdapter.id to hysteriaAdapter
         ),
-        onVpnInterfaceRequested = { engineId, config ->
-            val context = getApplication<Application>()
-            val configText = String(config.opaquePayload, Charsets.UTF_8)
-            MolidoVpnService.startService(context, engineId, configText)
-            true
-        },
-        onVpnInterfaceTornDown = {
-            val context = getApplication<Application>()
-            MolidoVpnService.stopService(context)
-        }
+        // GoBackend creates, owns, and tears down its own TUN. Other engines
+        // remain blocked until their own complete transport adapters exist.
+        onVpnInterfaceRequested = { engineId, _ -> engineId == "wireguard" },
+        onVpnInterfaceTornDown = { }
     )
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
@@ -103,7 +96,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
     private val _activeConfigText = MutableStateFlow(
-        configStore.getActiveConfig() ?: FreeServerCatalog.getDefaultFreeServers()[0].rawPayload
+        configStore.getActiveConfig().orEmpty()
     )
     val activeConfigText: StateFlow<String> = _activeConfigText.asStateFlow()
 
@@ -236,8 +229,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 if (configs.isNotEmpty()) {
                     // Update server list with fetched free servers
                     val newServers = configs.mapIndexed { index, conf ->
-                        val ping = (35L + (index * 8)).coerceAtMost(160L)
-                        val measurement = RouteMeasurement(conf.engineId, true, ping, 0.0, 98.0)
+                        // Importing a profile is not a reachability or quality measurement.
+                        val measurement = RouteMeasurement(conf.engineId, false, null, null, null)
                         val score = RouteScorer.score(measurement)
                         ServerItem(
                             id = "github-free-$index",
@@ -255,7 +248,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                     val doneMsg = if (_language.value == AppLanguage.PERSIAN) "${configs.size} سرور رایگان جدید از گیت‌هاب با موفقیت اضافه شد" else "Added ${configs.size} free servers from GitHub"
                     _effects.emit(VpnUiEffect.ShowToast(doneMsg))
                 } else {
-                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "سرورهای رایگان کاتالوگ فعال و بروز هستند" else "Default catalog servers are active"
+                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "هیچ پروفایل قابل‌اتصال تأییدشده‌ای پیدا نشد" else "No verified connectable profile was found"
                     _effects.emit(VpnUiEffect.ShowToast(fallbackMsg))
                 }
             } catch (e: Exception) {
@@ -267,20 +260,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshServers() {
-        val freeServers = FreeServerCatalog.getDefaultFreeServers()
-
-        val mockMetrics = mapOf(
-            "free-warp-global" to RouteMeasurement("warp", true, 26L, 0.0, 99.0, userPriority = 10),
-            "free-hysteria2-1" to RouteMeasurement("hysteria2", true, 38L, 0.0, 99.0, userPriority = 9),
-            "free-reality-1" to RouteMeasurement("xray", true, 42L, 0.0, 98.0, userPriority = 8),
-            "free-reality-2" to RouteMeasurement("xray", true, 48L, 0.1, 98.0, userPriority = 7),
-            "free-amnezia-1" to RouteMeasurement("amnezia", true, 55L, 0.0, 97.0, userPriority = 6),
-            "free-wireguard-1" to RouteMeasurement("wireguard", true, 68L, 0.5, 95.0, userPriority = 0)
-        )
-
-        val items = freeServers.map { profile ->
-            val measurement = mockMetrics[profile.id] ?: RouteMeasurement(profile.engineId, true, 70L, 0.0, 92.0)
-            val score = RouteScorer.score(measurement)
+        _servers.value = FreeServerCatalog.getDefaultFreeServers().map { profile ->
+            val measurement = RouteMeasurement(profile.engineId, false, null, null, null)
             ServerItem(
                 id = profile.id,
                 name = profile.name,
@@ -289,65 +270,80 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 flagEmoji = profile.flagEmoji,
                 payload = profile.rawPayload,
                 measurement = measurement,
-                score = score,
+                score = RouteScorer.score(measurement),
                 isFree = true
             )
-        }.sortedByDescending { it.score.score }
-
-        _servers.value = items
+        }
     }
 
     fun onConnectClicked(context: Context) {
-        val targetEngine: String
-        val targetPayload: ByteArray
-
-        if (_selectedEngineId.value == "auto") {
-            // Smart Connect Auto Mode: pick highest scoring route
-            val bestRoute = _servers.value.firstOrNull() ?: FreeServerCatalog.getDefaultFreeServers()[0].let {
-                ServerItem(it.id, it.name, it.engineId, it.country, it.flagEmoji, it.rawPayload, RouteMeasurement(it.engineId, true, 30L, 0.0, 99.0), RouteScore(it.engineId, 98.0, true))
+        val selected = _selectedEngineId.value
+        val route = if (selected == "auto") _servers.value.firstOrNull { it.score.eligible } else null
+        if (selected == "auto" && route == null) {
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "هیچ مسیر دارای اندازه‌گیری واقعی برای انتخاب هوشمند موجود نیست"
+                    else "No route with real measurements is available for Smart Routing"
+                ))
             }
-            targetEngine = bestRoute.engineId
-            targetPayload = bestRoute.payload.toByteArray(Charsets.UTF_8)
-            _activeConfigText.value = bestRoute.payload
-        } else {
-            targetEngine = _selectedEngineId.value
-            targetPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-        }
-
-        val config = EngineConfiguration(targetPayload)
-        val adapter = coordinator.getAdapter(targetEngine)
-        if (adapter == null) {
-            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("موتور نامعتبر: $targetEngine")) }
             return
         }
 
-        viewModelScope.launch {
-            coordinator.requestConnect(targetEngine, config)
-
-            val vpnIntent = VpnService.prepare(context)
-            if (vpnIntent != null) {
-                _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
-            } else {
-                coordinator.onVpnPermissionGranted(targetEngine, config)
+        val engine = route?.engineId ?: selected
+        val payload = route?.payload ?: _activeConfigText.value
+        if (payload.isBlank()) {
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "ابتدا پروفایل معتبر VPN را وارد کنید"
+                    else "Import a valid VPN profile first"
+                ))
             }
+            return
+        }
+
+        val config = EngineConfiguration(payload.toByteArray(Charsets.UTF_8))
+        if (coordinator.getAdapter(engine) == null) {
+            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("موتور نامعتبر: $engine")) }
+            return
+        }
+        if (route != null) updateActiveConfig(route.payload)
+
+        viewModelScope.launch {
+            coordinator.requestConnect(engine, config)
+            val vpnIntent = VpnService.prepare(context)
+            if (vpnIntent != null) _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
+            else coordinator.onVpnPermissionGranted(engine, config)
         }
     }
 
     fun onPermissionResult(isGranted: Boolean) {
-        if (isGranted) {
-            val engine = if (_selectedEngineId.value == "auto") {
-                _servers.value.firstOrNull()?.engineId ?: "warp"
-            } else _selectedEngineId.value
-
-            val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-            coordinator.onVpnPermissionGranted(engine, EngineConfiguration(configPayload))
-        } else {
+        if (!isGranted) {
             viewModelScope.launch {
-                val msg = if (_language.value == AppLanguage.PERSIAN) "مجوز اتصال VPN رد شد" else "VPN permission denied"
-                _effects.emit(VpnUiEffect.ShowToast(msg))
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "مجوز اتصال VPN رد شد" else "VPN permission denied"
+                ))
             }
             coordinator.disconnect()
+            return
         }
+
+        val selected = _selectedEngineId.value
+        val route = if (selected == "auto") _servers.value.firstOrNull { it.score.eligible } else null
+        val engine = route?.engineId ?: selected.takeUnless { it == "auto" }
+        val payload = route?.payload ?: _activeConfigText.value
+        if (engine == null || payload.isBlank()) {
+            coordinator.disconnect()
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "پروفایل معتبر یا مسیر اندازه‌گیری‌شده موجود نیست"
+                    else "No valid profile or measured route is available"
+                ))
+            }
+            return
+        }
+        coordinator.onVpnPermissionGranted(engine, EngineConfiguration(payload.toByteArray(Charsets.UTF_8)))
     }
 
     fun pingAllServers() {
@@ -379,7 +375,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                         val measurement = server.measurement.copy(
                             reachable = true,
                             latencyMillis = ping.latencyMillis,
-                            packetLossPercent = 0.0
+                            packetLossPercent = null,
+                            stabilityPercent = null
                         )
                         server.copy(
                             measurement = measurement,
@@ -389,8 +386,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                         // Mark unreachable / high penalty
                         val measurement = server.measurement.copy(
                             reachable = false,
-                            latencyMillis = 999L,
-                            packetLossPercent = 100.0
+                            latencyMillis = null,
+                            packetLossPercent = null,
+                            stabilityPercent = null
                         )
                         server.copy(
                             measurement = measurement,
