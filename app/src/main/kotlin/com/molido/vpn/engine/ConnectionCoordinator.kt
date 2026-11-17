@@ -1,8 +1,8 @@
 package com.molido.vpn.engine
 
 import com.molido.vpn.verifier.TrafficVerifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +19,7 @@ data class ConnectionDiagnostics(
     val egressIp: String? = null
 )
 
+/** Serializes tunnel lifecycle operations and awaits teardown before reconnecting. */
 class ConnectionCoordinator(
     private val scope: CoroutineScope,
     private val trafficVerifier: TrafficVerifier,
@@ -28,66 +29,75 @@ class ConnectionCoordinator(
 ) {
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
-
     private val _diagnostics = MutableStateFlow(ConnectionDiagnostics())
     val diagnostics: StateFlow<ConnectionDiagnostics> = _diagnostics.asStateFlow()
-
-    private val mutex = Mutex()
+    private val lifecycleMutex = Mutex()
     private var currentSession: EngineSession? = null
-    private var connectJob: Job? = null
 
     fun getAdapter(engineId: String): EngineAdapter? = adapters[engineId]
 
     fun requestConnect(engineId: String, configuration: EngineConfiguration) {
         scope.launch {
-            mutex.withLock {
+            lifecycleMutex.withLock {
+                if (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed) return@withLock
                 val adapter = adapters[engineId]
                 if (adapter == null) {
-                    dispatch(ConnectionEvent.Fail("Unknown engine: $engineId"))
+                    dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
                     return@withLock
                 }
-
-                val validation = adapter.validate(configuration)
+                val validation = try {
+                    adapter.validate(configuration)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    dispatch(ConnectionEvent.Fail("CONFIG_VALIDATION_FAILED"))
+                    return@withLock
+                }
                 if (validation is ValidationResult.Invalid) {
-                    dispatch(ConnectionEvent.Fail("Config validation failed: ${validation.reasonCode}"))
+                    dispatch(ConnectionEvent.Fail("CONFIG_VALIDATION_FAILED:" + validation.reasonCode))
                     return@withLock
                 }
-
                 dispatch(ConnectionEvent.Start)
             }
         }
     }
 
     fun onVpnPermissionGranted(engineId: String, configuration: EngineConfiguration) {
-        connectJob?.cancel()
-        connectJob = scope.launch {
-            mutex.withLock {
-                val adapter = adapters[engineId] ?: return@withLock
+        scope.launch {
+            lifecycleMutex.withLock {
+                // Ignore stale or duplicate permission callbacks.
+                if (_state.value != ConnectionState.Preparing) return@withLock
+                val adapter = adapters[engineId]
+                if (adapter == null) {
+                    dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
+                    return@withLock
+                }
                 dispatch(ConnectionEvent.PermissionGranted(engineId))
-
                 val interfaceReady = try {
                     onVpnInterfaceRequested(engineId, configuration)
-                } catch (e: Exception) {
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
                     dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
                     return@withLock
                 }
-
                 if (!interfaceReady) {
-                    dispatch(ConnectionEvent.Fail("Failed to establish TUN interface"))
+                    dispatch(ConnectionEvent.Fail("TUN_INTERFACE_SETUP_FAILED"))
                     return@withLock
                 }
-
                 try {
-                    val session = adapter.connect(
+                    currentSession = adapter.connect(
                         configuration = configuration,
-                        // Do not claim socket protection for adapters that do not implement it.
-                        // GoBackend protects its own native sockets internally.
+                        // GoBackend protects its native sockets; other adapters are fail-closed.
                         protectSocket = { false },
                         onEvent = { event -> handleEngineEvent(engineId, event) }
                     )
-                    currentSession = session
-                } catch (e: Exception) {
-                    cleanupSession()
+                } catch (cancelled: CancellationException) {
+                    cleanupSessionLocked()
+                    dispatch(ConnectionEvent.Fail("CONNECTION_CANCELLED"))
+                    throw cancelled
+                } catch (_: Exception) {
+                    cleanupSessionLocked()
                     dispatch(ConnectionEvent.Fail("ENGINE_CONNECTION_FAILED"))
                 }
             }
@@ -96,68 +106,83 @@ class ConnectionCoordinator(
 
     private fun handleEngineEvent(engineId: String, event: EngineEvent) {
         scope.launch {
-            when (event) {
-                is EngineEvent.TransportReady -> {
-                    dispatch(ConnectionEvent.EngineReady(engineId))
-                    verifyEgressTraffic(engineId)
-                }
-                is EngineEvent.Statistics -> {
-                    _diagnostics.value = _diagnostics.value.copy(
-                        bytesIn = event.bytesIn,
-                        bytesOut = event.bytesOut
-                    )
-                }
-                is EngineEvent.Failed -> {
-                    cleanupSession()
-                    if (event.recoverable) {
-                        dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
-                    } else {
-                        dispatch(ConnectionEvent.Fail(event.reasonCode))
+            lifecycleMutex.withLock {
+                if (currentSession?.engineId != engineId) return@withLock
+                when (event) {
+                    is EngineEvent.TransportReady -> {
+                        dispatch(ConnectionEvent.EngineReady(engineId))
+                        verifyEgressTrafficLocked(engineId)
+                    }
+                    is EngineEvent.Statistics -> {
+                        _diagnostics.value = _diagnostics.value.copy(
+                            bytesIn = event.bytesIn.coerceAtLeast(0),
+                            bytesOut = event.bytesOut.coerceAtLeast(0)
+                        )
+                    }
+                    is EngineEvent.Failed -> {
+                        cleanupSessionLocked()
+                        if (event.recoverable) dispatch(ConnectionEvent.Recover(engineId, event.reasonCode))
+                        else dispatch(ConnectionEvent.Fail(event.reasonCode))
                     }
                 }
             }
         }
     }
 
-    private suspend fun verifyEgressTraffic(engineId: String) {
-        val verification = trafficVerifier.verify(timeoutMillis = 4000L)
-        if (verification.success) {
+    private suspend fun verifyEgressTrafficLocked(engineId: String) {
+        val verification = try {
+            trafficVerifier.verify(timeoutMillis = 4_000L)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            cleanupSessionLocked()
+            dispatch(ConnectionEvent.Fail("EGRESS_VERIFICATION_FAILED"))
+            return
+        }
+        if (verification.success && currentSession?.engineId == engineId) {
             val now = System.currentTimeMillis()
             _diagnostics.value = _diagnostics.value.copy(
                 lastVerifiedAtMillis = now,
-                lastLatencyMillis = verification.latencyMillis,
+                lastLatencyMillis = verification.latencyMillis?.coerceAtLeast(0),
                 activeEngineId = engineId,
                 egressIp = verification.egressIp
             )
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
-            val reason = verification.errorMessage ?: "Egress traffic verification failed"
-            cleanupSession()
-            dispatch(ConnectionEvent.Fail(reason))
+            cleanupSessionLocked()
+            dispatch(ConnectionEvent.Fail(verification.errorMessage ?: "EGRESS_VERIFICATION_FAILED"))
         }
     }
 
-    private fun cleanupSession() {
-        currentSession?.let { session ->
-            adapters[session.engineId]?.let { adapter ->
-                scope.launch {
-                    try { adapter.disconnect(session) } catch (_: Exception) { /* cleanup remains fail-closed */ }
-                }
-            }
-            currentSession = null
-        }
-        scope.launch {
+    private suspend fun cleanupSessionLocked() {
+        val session = currentSession
+        currentSession = null
+        if (session != null) {
             try {
-                onVpnInterfaceTornDown()
-            } catch (_: Exception) {}
+                adapters[session.engineId]?.disconnect(session)
+            } catch (_: Exception) {
+                // Continue to TUN teardown even when adapter shutdown fails.
+            }
         }
-        _diagnostics.value = _diagnostics.value.copy(activeEngineId = null, egressIp = null)
+        try {
+            onVpnInterfaceTornDown()
+        } catch (_: Exception) {
+            // Preserve fail-closed state.
+        }
+        _diagnostics.value = _diagnostics.value.copy(
+            activeEngineId = null,
+            egressIp = null,
+            lastLatencyMillis = null
+        )
     }
 
     fun disconnect() {
-        connectJob?.cancel()
-        cleanupSession()
-        dispatch(ConnectionEvent.Stop)
+        scope.launch {
+            lifecycleMutex.withLock {
+                cleanupSessionLocked()
+                dispatch(ConnectionEvent.Stop)
+            }
+        }
     }
 
     private fun dispatch(event: ConnectionEvent) {
