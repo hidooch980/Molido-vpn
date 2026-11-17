@@ -44,7 +44,7 @@ class ConnectionCoordinator(
     fun requestConnect(engineId: String, configuration: EngineConfiguration) {
         scope.launch {
             lifecycleMutex.withLock {
-                if (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed) return@withLock
+                if (currentSession != null || (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed)) return@withLock
                 val adapter = adapters[engineId]
                 if (adapter == null) {
                     dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
@@ -174,38 +174,45 @@ class ConnectionCoordinator(
         }
     }
 
-    private suspend fun cleanupSessionLocked() {
-        withContext(NonCancellable) {
+    private suspend fun cleanupSessionLocked(): Boolean = withContext(NonCancellable) {
             activeAttemptId += 1L
             pendingEngineId = null
             pendingConfiguration = null
             val session = currentSession
-            currentSession = null
+            var teardownSucceeded = true
             if (session != null) {
                 try {
                     adapters[session.engineId]?.disconnect(session)
+                    currentSession = null
                 } catch (_: Exception) {
-                    // Continue to TUN teardown even when adapter shutdown fails.
+                    // Retain the session so a later explicit disconnect can retry teardown.
+                    teardownSucceeded = false
                 }
             }
             try {
                 onVpnInterfaceTornDown()
             } catch (_: Exception) {
-                // Preserve fail-closed state.
+                teardownSucceeded = false
             }
-            _diagnostics.value = _diagnostics.value.copy(
-                activeEngineId = null,
-                egressIp = null,
-                lastLatencyMillis = null
-            )
+            if (teardownSucceeded) {
+                _diagnostics.value = _diagnostics.value.copy(
+                    activeEngineId = null,
+                    egressIp = null,
+                    lastLatencyMillis = null
+                )
+            }
+            teardownSucceeded
         }
     }
 
     fun disconnect() {
         scope.launch {
             lifecycleMutex.withLock {
-                cleanupSessionLocked()
-                dispatch(ConnectionEvent.Stop)
+                if (cleanupSessionLocked()) {
+                    dispatch(ConnectionEvent.Stop)
+                } else {
+                    dispatch(ConnectionEvent.Fail("TUN_TEARDOWN_FAILED"))
+                }
             }
         }
     }
