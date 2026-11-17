@@ -59,21 +59,19 @@ class NetworkHandoverMonitor(
     }
 
     private fun publish(network: Network, snapshot: Pair<Boolean, Boolean>?) {
-        val notification = synchronized(lock) {
+        val result = synchronized(lock) {
+            val hadUsableNetwork = usableNetworks.isNotEmpty()
             if (snapshot == null) usableNetworks.remove(network)
             else usableNetworks[network] = snapshot
             val selected = usableNetworks.values.lastOrNull()
-            if (selected == lastPublished) null
-            else {
-                lastPublished = selected
-                selected
-            }
+            val changed = selected != lastPublished
+            lastPublished = selected
+            Triple(selected, changed, hadUsableNetwork && selected == null && changed)
         }
-        if (notification != null) {
-            runCatching { onNetworkChanged(notification.first, notification.second) }
-        } else {
-            val noNetwork = synchronized(lock) { usableNetworks.isEmpty() && lastPublished == null }
-            if (noNetwork) runCatching { onNoUsableNetwork() }
+        if (result.second && result.first != null) {
+            runCatching { onNetworkChanged(result.first!!.first, result.first!!.second) }
+        } else if (result.third) {
+            runCatching { onNoUsableNetwork() }
         }
     }
 
