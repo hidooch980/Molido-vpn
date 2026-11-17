@@ -69,16 +69,11 @@ jobs:
         run: |
           ./gradlew testDebugUnitTest lintDebug --stacktrace
 
-      - name: Run Android instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_2
-          target: google_apis
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data
-          disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest --stacktrace
+      # Never assemble or install an instrumentation/test APK, including on release.
+      # Compile test sources only; device-dependent Android Keystore behavior is not
+      # claimed as verified and must be validated separately on a physical device.
+      - name: Compile Android instrumentation test sources (no APK)
+        run: ./gradlew compileDebugAndroidTestKotlin --stacktrace
 
       - name: Build signed release APK
         env:
