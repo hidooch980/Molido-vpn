@@ -12,12 +12,12 @@ class AmneziaWgEngineAdapter : EngineAdapter {
     override val displayName: String = "AmneziaWG (Obfuscated)"
 
     override val capabilities: EngineCapabilities = EngineCapabilities(
-        supportsIpv4 = true,
-        supportsIpv6 = true,
-        supportsUdp = true,
-        supportsDnsControl = true,
-        supportsPerAppRouting = true,
-        supportsMtuConfiguration = true
+        supportsIpv4 = false,
+        supportsIpv6 = false,
+        supportsUdp = false,
+        supportsDnsControl = false,
+        supportsPerAppRouting = false,
+        supportsMtuConfiguration = false
     )
 
     override suspend fun validate(configuration: EngineConfiguration): ValidationResult {
