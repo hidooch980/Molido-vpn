@@ -43,6 +43,7 @@ class ConnectionCoordinator(
     private var pendingConfiguration: EngineConfiguration? = null
     private var lastActiveConfiguration: EngineConfiguration? = null
     private var lastActiveEngineId: String? = null
+    private var cleanupPending: Boolean = false
     private var recoveryJob: Job? = null
 
     fun getAdapter(engineId: String): EngineAdapter? = adapters[engineId]
@@ -50,7 +51,7 @@ class ConnectionCoordinator(
     fun requestConnect(engineId: String, configuration: EngineConfiguration) {
         scope.launch {
             lifecycleMutex.withLock {
-                if (currentSession != null || (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed && _state.value !is ConnectionState.Recovering)) return@withLock
+                if (cleanupPending || currentSession != null || (_state.value !is ConnectionState.Idle && _state.value !is ConnectionState.Failed && _state.value !is ConnectionState.Recovering)) return@withLock
                 val adapter = adapters[engineId]
                 if (adapter == null) {
                     dispatch(ConnectionEvent.Fail("UNKNOWN_ENGINE"))
@@ -231,11 +232,14 @@ class ConnectionCoordinator(
             }
             if (teardownSucceeded) {
                 currentSession = null
+                cleanupPending = false
                 _diagnostics.value = _diagnostics.value.copy(
                     activeEngineId = null,
                     egressIp = null,
                     lastLatencyMillis = null
                 )
+            } else {
+                cleanupPending = true
             }
             teardownSucceeded
         }
