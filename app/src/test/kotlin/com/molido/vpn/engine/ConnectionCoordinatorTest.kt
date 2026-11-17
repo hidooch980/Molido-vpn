@@ -55,6 +55,31 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun permissionCallbackMustMatchValidatedEngineAndConfiguration() = runTest {
+        val adapter = TestReadyAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+        val alteredConfig = EngineConfiguration("[Interface]".toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect("test-ready", config)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+
+        coordinator.onVpnPermissionGranted("unknown-engine", config)
+        coordinator.onVpnPermissionGranted("test-ready", alteredConfig)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+
+        coordinator.onVpnPermissionGranted("test-ready", config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+    }
+
+    @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
         val adapter = TestReadyAdapter()
