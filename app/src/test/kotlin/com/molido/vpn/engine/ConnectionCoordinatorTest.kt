@@ -154,6 +154,44 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun failedCleanupWithoutSessionStillBlocksReconnectUntilTunRetrySucceeds() = runTest {
+        val adapter = FailingConnectAdapter()
+        var tunTeardownCalls = 0
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter),
+            onVpnInterfaceTornDown = {
+                tunTeardownCalls++
+                if (tunTeardownCalls == 1) error("simulated TUN cleanup failure")
+            }
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue("Pending TUN cleanup must block a new preparation", coordinator.state.value is ConnectionState.Failed)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.disconnect()
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Idle, coordinator.state.value)
+        assertEquals(2, tunTeardownCalls)
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        assertEquals(ConnectionState.Preparing, coordinator.state.value)
+    }
+
+    @Test
     fun recoverableEngineFailureDoesNotRecoverWhenTunnelTeardownFails() = runTest {
         val adapter = RetryDisconnectAdapter()
         val coordinator = ConnectionCoordinator(
@@ -351,6 +389,27 @@ class ConnectionCoordinatorTest {
             disconnectCalls++
             if (disconnectCalls == 1) error("simulated backend teardown failure")
         }
+    }
+
+    private class FailingConnectAdapter : EngineAdapter {
+        override val id: String = "failing-connect"
+        override val displayName: String = "Failing connect adapter"
+        override val capabilities = EngineCapabilities(true, true, true, true, false, false)
+        var connectCalls = 0
+
+        override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
+            ValidationResult.Valid
+
+        override suspend fun connect(
+            configuration: EngineConfiguration,
+            protectSocket: (Int) -> Boolean,
+            onEvent: (EngineEvent) -> Unit
+        ): EngineSession {
+            connectCalls++
+            error("simulated engine connect failure after TUN setup")
+        }
+
+        override suspend fun disconnect(session: EngineSession) = Unit
     }
 
     private class CountingTestAdapter : EngineAdapter {
