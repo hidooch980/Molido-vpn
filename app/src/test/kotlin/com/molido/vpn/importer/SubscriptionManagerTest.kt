@@ -47,6 +47,8 @@ class SubscriptionManagerTest {
             "https://127.0.0.1/sub",
             "https://10.0.0.5/sub",
             "https://192.168.1.10/sub",
+            "https://[::1]/sub",
+            "https://[fc00::1]/sub",
             "https://localhost/sub",
             "https://user:pass@example.com/sub",
             "https://example.com:8443/sub"
