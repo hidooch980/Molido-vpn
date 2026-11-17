@@ -193,6 +193,36 @@ class ConnectionCoordinatorTest {
     }
 
     @Test
+    fun physicalNetworkLossTearsDownAndWaitsForNetworkReturnBeforeRecovery() = runTest {
+        val adapter = RecoveringTestAdapter()
+        val coordinator = ConnectionCoordinator(
+            scope = this,
+            trafficVerifier = MockTrafficVerifier(simulatedSuccess = true),
+            adapters = mapOf(adapter.id to adapter)
+        )
+        val config = EngineConfiguration(validConfig.toByteArray(Charsets.UTF_8))
+
+        coordinator.requestConnect(adapter.id, config)
+        advanceUntilIdle()
+        coordinator.onVpnPermissionGranted(adapter.id, config)
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value is ConnectionState.Connected)
+        assertEquals(1, adapter.connectCalls)
+
+        coordinator.onPhysicalNetworkLost()
+        advanceUntilIdle()
+        val recovering = coordinator.state.value
+        assertTrue("Physical loss must leave a recoverable state: $recovering", recovering is ConnectionState.Recovering)
+        assertEquals(1, adapter.disconnectCalls)
+        assertEquals("No reconnect is attempted while offline", 1, adapter.connectCalls)
+
+        coordinator.verifyActiveTunnelAfterNetworkChange()
+        advanceUntilIdle()
+        assertTrue("The tunnel should be re-established only after network return", coordinator.state.value is ConnectionState.Connected)
+        assertEquals(2, adapter.connectCalls)
+    }
+
+    @Test
     fun failedVerificationFailsClosed() = runTest {
         val mockVerifier = MockTrafficVerifier(simulatedSuccess = false, simulatedError = "Egress test failed")
         val adapter = TestReadyAdapter()
@@ -233,6 +263,7 @@ class ConnectionCoordinatorTest {
         override val displayName: String = "Recovering test adapter"
         override val capabilities = EngineCapabilities(true, true, true, true, false, false)
         var connectCalls = 0
+        var disconnectCalls = 0
         var eventSink: ((EngineEvent) -> Unit)? = null
 
         override suspend fun validate(configuration: EngineConfiguration): ValidationResult =
@@ -251,7 +282,7 @@ class ConnectionCoordinatorTest {
             }
         }
 
-        override suspend fun disconnect(session: EngineSession) = Unit
+        override suspend fun disconnect(session: EngineSession) { disconnectCalls++ }
     }
 
     private class RetryDisconnectAdapter : EngineAdapter {
