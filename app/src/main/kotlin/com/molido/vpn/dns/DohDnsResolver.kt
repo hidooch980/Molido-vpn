@@ -12,10 +12,9 @@ data class DnsProvider(
 )
 
 /**
- * Configures resolver IP addresses in the Android VPN interface.
- * This does NOT implement DNS-over-HTTPS; the provider endpoint metadata is
- * informational only. Do not advertise encrypted DNS until a real DoH client
- * is integrated and its traffic is routed through the protected tunnel.
+ * Supplies resolver IPs for the VPN interface and provider metadata for the
+ * separate RFC 8484 app-owned DoH client. Builder DNS remains ordinary DNS;
+ * this class does not intercept or convert system-wide UDP/53 packets.
  */
 object DohDnsResolver {
 
@@ -47,7 +46,7 @@ object DohDnsResolver {
         DnsProvider(
             id = "adguard",
             name = "AdGuard DNS",
-            description = "AdGuard public DNS servers; filtering depends on provider policy.",
+            description = "AdGuard DoH for app-owned lookups; system-wide DNS interception is not enabled.",
             primaryIp = "94.140.14.14",
             secondaryIp = "94.140.15.15",
             dohEndpoint = "https://dns.adguard-dns.com/dns-query"
