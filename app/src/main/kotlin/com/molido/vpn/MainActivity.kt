@@ -102,6 +102,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.molido.vpn.dns.DohDnsResolver
 import com.molido.vpn.data.ServerCountryClassifier
+import com.molido.vpn.importer.SubscriptionRefreshScheduler
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.policy.KillSwitchManager
@@ -120,6 +121,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SubscriptionRefreshScheduler.schedule(applicationContext)
         setContent {
             MolidoVpnTheme {
                 val language by viewModel.language.collectAsState()
