@@ -172,6 +172,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
     val subscriptionUrls by viewModel.subscriptionUrls.collectAsState()
+    val disabledSubscriptionUrls by viewModel.disabledSubscriptionUrls.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -324,6 +325,8 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                         strings = strings, servers = servers, isFetching = isFetchingCommunity,
                         isPersian = language == AppLanguage.PERSIAN,
                         subscriptionUrls = subscriptionUrls,
+                        disabledSubscriptionUrls = disabledSubscriptionUrls,
+                        onSetSubscriptionEnabled = { url, enabled -> viewModel.setSubscriptionEnabled(url, enabled) },
                         onAddSubscription = { viewModel.addSubscription(it) },
                         onRemoveSubscription = { viewModel.removeSubscription(it) },
                         onRefreshSubscriptions = { viewModel.refreshSubscriptionsNow() },
@@ -615,6 +618,8 @@ fun ServersTab(
     isFetching: Boolean,
     isPersian: Boolean,
     subscriptionUrls: List<String>,
+    disabledSubscriptionUrls: Set<String>,
+    onSetSubscriptionEnabled: (String, Boolean) -> Unit,
     onAddSubscription: (String) -> Unit,
     onRemoveSubscription: (String) -> Unit,
     onRefreshSubscriptions: () -> Unit,
@@ -707,7 +712,19 @@ fun ServersTab(
                     } else {
                         subscriptionUrls.forEach { url ->
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Text(url, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                val enabled = url !in disabledSubscriptionUrls
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(url, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                    Text(
+                                        if (isPersian) { if (enabled) "فعال" else "غیرفعال" }
+                                        else { if (enabled) "Enabled" else "Disabled" },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (enabled) Color(0xFF34D399) else Color(0xFFFBBF24)
+                                    )
+                                }
+                                TextButton(onClick = { onSetSubscriptionEnabled(url, !enabled) }) {
+                                    Text(if (isPersian) { if (enabled) "غیرفعال" else "فعال" } else { if (enabled) "Disable" else "Enable" })
+                                }
                                 TextButton(onClick = { onRemoveSubscription(url) }) {
                                     Text(if (isPersian) "حذف" else "Remove")
                                 }
