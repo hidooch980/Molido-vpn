@@ -171,6 +171,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
     val splitApps by viewModel.splitApps.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
     val isFetchingCommunity by viewModel.isFetchingCommunity.collectAsState()
+    val subscriptionUrls by viewModel.subscriptionUrls.collectAsState()
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -322,6 +323,10 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     1 -> ServersTab(
                         strings = strings, servers = servers, isFetching = isFetchingCommunity,
                         isPersian = language == AppLanguage.PERSIAN,
+                        subscriptionUrls = subscriptionUrls,
+                        onAddSubscription = { viewModel.addSubscription(it) },
+                        onRemoveSubscription = { viewModel.removeSubscription(it) },
+                        onRefreshSubscriptions = { viewModel.refreshSubscriptionsNow() },
                         onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
                         onSelectServer = { viewModel.selectServer(it) },
                         onImportClipboard = {
@@ -609,12 +614,17 @@ fun ServersTab(
     servers: List<ServerItem>,
     isFetching: Boolean,
     isPersian: Boolean,
+    subscriptionUrls: List<String>,
+    onAddSubscription: (String) -> Unit,
+    onRemoveSubscription: (String) -> Unit,
+    onRefreshSubscriptions: () -> Unit,
     onUpdateFromGithub: () -> Unit,
     onSelectServer: (ServerItem) -> Unit,
     onImportClipboard: () -> Unit
 ) {
     var countryMenuExpanded by remember { mutableStateOf(false) }
     var selectedCountryCode by remember { mutableStateOf("ALL") }
+    var subscriptionInput by remember { mutableStateOf("") }
     val countries = remember(servers, isPersian) {
         ServerCountryClassifier.sorted(servers.map { ServerCountryClassifier.resolve(it.country) }, isPersian)
     }
@@ -663,6 +673,53 @@ fun ServersTab(
                     Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(strings.clipboardButton, fontSize = 12.sp)
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (isPersian) "مدیریت اشتراک‌ها" else "Subscription management", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = subscriptionInput,
+                        onValueChange = { subscriptionInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text(if (isPersian) "آدرس HTTPS اشتراک" else "HTTPS subscription URL") },
+                        placeholder = { Text("https://example.com/sub.txt") }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { onAddSubscription(subscriptionInput); subscriptionInput = "" },
+                            enabled = subscriptionInput.isNotBlank(),
+                            modifier = Modifier.weight(1f)
+                        ) { Text(if (isPersian) "ذخیره اشتراک" else "Add subscription") }
+                        OutlinedButton(onClick = onRefreshSubscriptions, modifier = Modifier.weight(1f)) {
+                            Text(if (isPersian) "به‌روزرسانی" else "Refresh")
+                        }
+                    }
+                    if (subscriptionUrls.isEmpty()) {
+                        Text(if (isPersian) "هنوز اشتراک سفارشی ثبت نشده است." else "No custom subscriptions saved.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        subscriptionUrls.forEach { url ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text(url, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                TextButton(onClick = { onRemoveSubscription(url) }) {
+                                    Text(if (isPersian) "حذف" else "Remove")
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        if (isPersian) "آدرس‌ها پس از اعتبارسنجی HTTPS در Android Keystore رمزگذاری می‌شوند. منابع عمومی ممکن است ناپایدار یا غیرقابل‌اعتماد باشند."
+                        else "URLs are validated as HTTPS and encrypted at rest with Android Keystore. Public feeds may be unstable or untrusted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
+                    )
                 }
             }
         }
