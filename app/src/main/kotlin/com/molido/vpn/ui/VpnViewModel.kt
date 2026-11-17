@@ -192,7 +192,26 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun isEngineSelectable(engineId: String): Boolean =
+        BuildConfig.DEBUG && engineId == "wireguard"
+
+    private fun notifyEngineUnavailable() {
+        viewModelScope.launch {
+            _effects.emit(
+                VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "این موتور هنوز Runtime تأییدشده ندارد و غیرفعال است"
+                    else "This engine has no accepted runtime and remains disabled"
+                )
+            )
+        }
+    }
+
     fun setSelectedEngine(engineId: String) {
+        if (engineId != "auto" && !isEngineSelectable(engineId)) {
+            notifyEngineUnavailable()
+            return
+        }
         _selectedEngineId.value = engineId
         configStore.saveSelectedEngine(engineId)
 
@@ -461,6 +480,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val engine = route?.engineId ?: selected
+        if (!isEngineSelectable(engine)) {
+            notifyEngineUnavailable()
+            return
+        }
         val payload = route?.payload ?: _activeConfigText.value
         if (payload.isBlank()) {
             viewModelScope.launch {
