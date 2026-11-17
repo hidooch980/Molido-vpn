@@ -15,7 +15,8 @@ data class ConnectionDiagnostics(
     val lastLatencyMillis: Long? = null,
     val bytesIn: Long = 0,
     val bytesOut: Long = 0,
-    val activeEngineId: String? = null
+    val activeEngineId: String? = null,
+    val egressIp: String? = null
 )
 
 class ConnectionCoordinator(
@@ -79,7 +80,9 @@ class ConnectionCoordinator(
                 try {
                     val session = adapter.connect(
                         configuration = configuration,
-                        protectSocket = { true },
+                        // Do not claim socket protection for adapters that do not implement it.
+                        // GoBackend protects its own native sockets internally.
+                        protectSocket = { false },
                         onEvent = { event -> handleEngineEvent(engineId, event) }
                     )
                     currentSession = session
@@ -123,7 +126,8 @@ class ConnectionCoordinator(
             _diagnostics.value = _diagnostics.value.copy(
                 lastVerifiedAtMillis = now,
                 lastLatencyMillis = verification.latencyMillis,
-                activeEngineId = engineId
+                activeEngineId = engineId,
+                egressIp = verification.egressIp
             )
             dispatch(ConnectionEvent.TrafficVerified(engineId, now))
         } else {
@@ -145,7 +149,7 @@ class ConnectionCoordinator(
                 onVpnInterfaceTornDown()
             } catch (_: Exception) {}
         }
-        _diagnostics.value = _diagnostics.value.copy(activeEngineId = null)
+        _diagnostics.value = _diagnostics.value.copy(activeEngineId = null, egressIp = null)
     }
 
     fun disconnect() {
