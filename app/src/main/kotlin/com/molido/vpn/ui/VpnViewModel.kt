@@ -27,6 +27,7 @@ import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.engine.xray.XrayEngineAdapter
 import com.molido.vpn.importer.ConfigImporter
 import com.molido.vpn.importer.SubscriptionManager
+import com.molido.vpn.network.NetworkHandoverMonitor
 import com.molido.vpn.ping.BatchPingTester
 import com.molido.vpn.policy.AppInfo
 import com.molido.vpn.policy.RouteMeasurement
@@ -91,6 +92,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         onVpnInterfaceTornDown = { }
     )
 
+    private val networkHandoverMonitor = NetworkHandoverMonitor(
+        context = application,
+        onNetworkChanged = { _, _ -> coordinator.verifyActiveTunnelAfterNetworkChange() }
+    )
+
     val connectionState: StateFlow<ConnectionState> = coordinator.state
     val diagnostics: StateFlow<ConnectionDiagnostics> = coordinator.diagnostics
 
@@ -148,6 +154,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
 
     init {
+        networkHandoverMonitor.start()
         loadInstalledApps()
         refreshServers()
         checkForUpdates(silent = true)
@@ -606,5 +613,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissUpdateDialog() {
         _updateInfo.value = null
+    }
+
+    override fun onCleared() {
+        networkHandoverMonitor.stop()
+        super.onCleared()
     }
 }
