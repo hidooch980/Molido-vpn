@@ -12,6 +12,8 @@ import com.molido.vpn.data.FreeServerCatalog
 import com.molido.vpn.data.FreeServerProfile
 import com.molido.vpn.data.ServerCountryClassifier
 import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.dns.DnsRecordType
+import com.molido.vpn.dns.VpnNetworkDohClient
 import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
@@ -190,6 +192,20 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleKillSwitch(enabled: Boolean) {
         _killSwitchEnabled.value = enabled
         configStore.saveKillSwitchEnabled(enabled)
+    }
+
+    /**
+     * Performs an app-owned DNS-over-HTTPS lookup over the active VPN Network.
+     * Android system DNS traffic is not intercepted by this helper.
+     */
+    suspend fun resolveDnsOverHttps(
+        hostname: String,
+        recordType: DnsRecordType = DnsRecordType.A
+    ): ByteArray {
+        return VpnNetworkDohClient(
+            context = getApplication(),
+            providerId = _selectedDns.value
+        ).resolve(hostname, recordType)
     }
 
     fun setDnsProvider(providerId: String) {
