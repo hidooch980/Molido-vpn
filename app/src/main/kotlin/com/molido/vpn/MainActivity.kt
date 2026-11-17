@@ -62,6 +62,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -99,6 +101,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.data.ServerCountryClassifier
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.policy.KillSwitchManager
@@ -316,6 +319,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                     )
                     1 -> ServersTab(
                         strings = strings, servers = servers, isFetching = isFetchingCommunity,
+                        isPersian = language == AppLanguage.PERSIAN,
                         onUpdateFromGithub = { viewModel.updateFromGithubCommunity() },
                         onSelectServer = { viewModel.selectServer(it) },
                         onImportClipboard = {
@@ -602,10 +606,23 @@ fun ServersTab(
     strings: AppStrings,
     servers: List<ServerItem>,
     isFetching: Boolean,
+    isPersian: Boolean,
     onUpdateFromGithub: () -> Unit,
     onSelectServer: (ServerItem) -> Unit,
     onImportClipboard: () -> Unit
 ) {
+    var countryMenuExpanded by remember { mutableStateOf(false) }
+    var selectedCountryCode by remember { mutableStateOf("ALL") }
+    val countries = remember(servers, isPersian) {
+        ServerCountryClassifier.sorted(servers.map { ServerCountryClassifier.resolve(it.country) }, isPersian)
+    }
+    val visibleServers = remember(servers, selectedCountryCode) {
+        servers.filter { selectedCountryCode == "ALL" || ServerCountryClassifier.resolve(it.country).code == selectedCountryCode }
+            .sortedWith(compareBy<ServerItem> { ServerCountryClassifier.resolve(it.country).code == "ZZ" }
+                .thenBy { ServerCountryClassifier.resolve(it.country).nameEn.lowercase() }
+                .thenByDescending { it.score.score })
+    }
+    val groupedServers = remember(visibleServers) { visibleServers.groupBy { ServerCountryClassifier.resolve(it.country) } }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -649,14 +666,38 @@ fun ServersTab(
         }
 
         item {
-            Text(
-                strings.freeServersTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Text(strings.freeServersTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
-
-        items(servers) { server ->
+        item {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { countryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                    val selected = countries.firstOrNull { it.code == selectedCountryCode }
+                    Text(if (selectedCountryCode == "ALL") {
+                        if (isPersian) "انتخاب کشور: همه کشورها" else "Select country: All countries"
+                    } else {
+                        selected?.let { "${it.flag}  ${ServerCountryClassifier.displayName(it, isPersian)}" } ?: "Select country"
+                    })
+                }
+                DropdownMenu(expanded = countryMenuExpanded, onDismissRequest = { countryMenuExpanded = false }) {
+                    DropdownMenuItem(text = { Text(if (isPersian) "🌐 همه کشورها" else "🌐 All countries") }, onClick = { selectedCountryCode = "ALL"; countryMenuExpanded = false })
+                    countries.forEach { country ->
+                        DropdownMenuItem(text = { Text("${country.flag}  ${ServerCountryClassifier.displayName(country, isPersian)}") }, onClick = { selectedCountryCode = country.code; countryMenuExpanded = false })
+                    }
+                }
+            }
+            Text(if (isPersian) "${visibleServers.size} سرور" else "${visibleServers.size} servers", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+        }
+        groupedServers.forEach { (country, countryServers) ->
+            item(key = "country-${country.code}") {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(country.flag, fontSize = 20.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(ServerCountryClassifier.displayName(country, isPersian), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("(${countryServers.size})", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                }
+            }
+            items(countryServers, key = { it.id }) { server ->
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -709,6 +750,7 @@ fun ServersTab(
                         )
                     }
                 }
+            }
             }
         }
     }
