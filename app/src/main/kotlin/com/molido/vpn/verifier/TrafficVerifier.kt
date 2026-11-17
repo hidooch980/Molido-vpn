@@ -134,10 +134,6 @@ internal object PublicEgressIpValidator {
         return if (isReserved) null else address
     }
 }
-    private companion object {
-        const val MAX_EGRESS_BODY_BYTES = 64
-    }
-}
 
 class MockTrafficVerifier(
     var simulatedSuccess: Boolean = true,
