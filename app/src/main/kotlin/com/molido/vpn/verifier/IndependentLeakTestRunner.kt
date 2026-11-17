@@ -54,7 +54,7 @@ class IndependentLeakTestRunner(context: Context) {
         val nonce = buildString(32) {
             val bytes = ByteArray(16)
             SecureRandom().nextBytes(bytes)
-            bytes.forEach { append("%02x".format(it)) }
+            bytes.forEach { append((it.toInt() and 0xff).toString(16).padStart(2, '0')) }
         }
         val probeHost = "$nonce.bash.ws"
 
