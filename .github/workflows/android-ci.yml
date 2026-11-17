@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [main]
+    branches: [main, feature/wireguard-gobackend-integration-2026-11]
   pull_request:
     branches: [main]
   workflow_dispatch:
