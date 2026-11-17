@@ -24,21 +24,21 @@ class UnimplementedEnginesFailClosedTest {
     @Test
     fun xrayDoesNotReportTransportReady() = runBlocking {
         assertUnavailable { events ->
-            XrayEngineAdapter().connect(configuration, { false }, events::add)
+            XrayEngineAdapter().connect(configuration, { false }, { event -> events.add(event); Unit })
         }
     }
 
     @Test
     fun hysteriaDoesNotReportTransportReady() = runBlocking {
         assertUnavailable { events ->
-            Hysteria2EngineAdapter().connect(configuration, { false }, events::add)
+            Hysteria2EngineAdapter().connect(configuration, { false }, { event -> events.add(event); Unit })
         }
     }
 
     @Test
     fun warpDoesNotReportTransportReady() = runBlocking {
         assertUnavailable { events ->
-            WarpEngineAdapter().connect(configuration, { false }, events::add)
+            WarpEngineAdapter().connect(configuration, { false }, { event -> events.add(event); Unit })
         }
     }
 
