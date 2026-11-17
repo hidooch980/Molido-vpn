@@ -6,21 +6,28 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.molido.vpn.BuildConfig
 import com.molido.vpn.data.EncryptedConfigStore
 import com.molido.vpn.data.FreeServerCatalog
 import com.molido.vpn.data.FreeServerProfile
+import com.molido.vpn.data.ServerCountryClassifier
 import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.dns.DohProbeObservation
+import com.molido.vpn.dns.DnsRecordType
+import com.molido.vpn.dns.VpnNetworkDohClient
 import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
 import com.molido.vpn.engine.ConnectionState
 import com.molido.vpn.engine.EngineConfiguration
 import com.molido.vpn.engine.amnezia.AmneziaWgEngineAdapter
+import com.molido.vpn.engine.hysteria.Hysteria2EngineAdapter
 import com.molido.vpn.engine.warp.CleanIpResult
 import com.molido.vpn.engine.warp.CleanIpScanner
 import com.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import com.molido.vpn.engine.xray.XrayEngineAdapter
 import com.molido.vpn.importer.ConfigImporter
 import com.molido.vpn.importer.SubscriptionManager
+import com.molido.vpn.network.NetworkHandoverMonitor
 import com.molido.vpn.ping.BatchPingTester
 import com.molido.vpn.policy.AppInfo
 import com.molido.vpn.policy.RouteMeasurement
@@ -30,13 +37,19 @@ import com.molido.vpn.policy.SplitTunnelManager
 import com.molido.vpn.update.UpdateInfo
 import com.molido.vpn.update.UpdateManager
 import com.molido.vpn.verifier.NetworkTrafficVerifier
+import com.molido.vpn.verifier.IndependentLeakTestRunner
+import com.molido.vpn.verifier.AddressFamilyProbe
+import com.molido.vpn.verifier.DnsResolverObservation
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ServerItem(
     val id: String,
@@ -50,20 +63,6 @@ data class ServerItem(
     val isFree: Boolean = true
 )
 
-data class LocationItem(
-    val id: String,
-    val name: String,
-    val countryFa: String,
-    val countryEn: String,
-    val cityFa: String,
-    val cityEn: String,
-    val flagEmoji: String,
-    val engineId: String,
-    val latencyMillis: Long?,
-    val isAuto: Boolean = false,
-    val payload: String = ""
-)
-
 sealed interface VpnUiEffect {
     data class RequestVpnPermission(val intent: Intent) : VpnUiEffect
     data class ShowToast(val message: String) : VpnUiEffect
@@ -73,22 +72,45 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val configStore = EncryptedConfigStore(application)
 
+    private val independentLeakTestRunner = IndependentLeakTestRunner(application)
+
+    private val _isRunningLeakDiagnostics = MutableStateFlow(false)
+    val isRunningLeakDiagnostics: StateFlow<Boolean> = _isRunningLeakDiagnostics.asStateFlow()
+
+    private val _addressFamilyDiagnostics = MutableStateFlow<List<AddressFamilyProbe>?>(null)
+    val addressFamilyDiagnostics: StateFlow<List<AddressFamilyProbe>?> = _addressFamilyDiagnostics.asStateFlow()
+
+    private val _dnsResolverObservation = MutableStateFlow<DnsResolverObservation?>(null)
+    val dnsResolverObservation: StateFlow<DnsResolverObservation?> = _dnsResolverObservation.asStateFlow()
+    private val _dohProbeObservation = MutableStateFlow<DohProbeObservation?>(null)
+    val dohProbeObservation: StateFlow<DohProbeObservation?> = _dohProbeObservation.asStateFlow()
+
     private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
-    private val xrayAdapter = XrayEngineAdapter(application)
+    private val xrayAdapter = XrayEngineAdapter()
+    private val hysteriaAdapter = Hysteria2EngineAdapter()
 
     val coordinator = ConnectionCoordinator(
         scope = viewModelScope,
-        trafficVerifier = NetworkTrafficVerifier(),
+        trafficVerifier = NetworkTrafficVerifier(application),
         adapters = mapOf(
             wireguardAdapter.id to wireguardAdapter,
             amneziaAdapter.id to amneziaAdapter,
             xrayAdapter.id to xrayAdapter,
+            hysteriaAdapter.id to hysteriaAdapter
         ),
-        // The legacy app-owned VPN service was removed. Keep the main branch
-        // fail-closed until the GoBackend-only integration is merged and accepted.
-        onVpnInterfaceRequested = { _, _ -> false },
+        // GoBackend creates, owns, and tears down its own TUN. Other engines
+        // remain blocked until their own complete transport adapters exist.
+        // Permit internal device acceptance only in debug builds. Release stays fail-closed
+        // until the physical-device acceptance matrix is completed and reviewed.
+        onVpnInterfaceRequested = { engineId, _ -> BuildConfig.DEBUG && engineId == "wireguard" },
         onVpnInterfaceTornDown = { }
+    )
+
+    private val networkHandoverMonitor = NetworkHandoverMonitor(
+        context = application,
+        onNetworkChanged = { _, _ -> coordinator.verifyActiveTunnelAfterNetworkChange() },
+        onNoUsableNetwork = { coordinator.onPhysicalNetworkLost() }
     )
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
@@ -101,10 +123,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     val language: StateFlow<AppLanguage> = _language.asStateFlow()
 
     private val _selectedEngineId = MutableStateFlow("auto") // Default to Smart Auto Connect
+    private var pendingPermissionRequest: Pair<String, EngineConfiguration>? = null
     val selectedEngineId: StateFlow<String> = _selectedEngineId.asStateFlow()
 
     private val _activeConfigText = MutableStateFlow(
-        configStore.getActiveConfig() ?: FreeServerCatalog.getDefaultFreeServers()[0].rawPayload
+        configStore.getActiveConfig().orEmpty()
     )
     val activeConfigText: StateFlow<String> = _activeConfigText.asStateFlow()
 
@@ -126,6 +149,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _isFetchingCommunity = MutableStateFlow(false)
     val isFetchingCommunity: StateFlow<Boolean> = _isFetchingCommunity.asStateFlow()
 
+    private val _subscriptionUrls = MutableStateFlow(configStore.getSubscriptions())
+    val subscriptionUrls: StateFlow<List<String>> = _subscriptionUrls.asStateFlow()
+    private val _disabledSubscriptionUrls = MutableStateFlow(configStore.getDisabledSubscriptions())
+    val disabledSubscriptionUrls: StateFlow<Set<String>> = _disabledSubscriptionUrls.asStateFlow()
+
     private val _isPinging = MutableStateFlow(false)
     val isPinging: StateFlow<Boolean> = _isPinging.asStateFlow()
 
@@ -141,21 +169,11 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
 
-    private val _updateDownloadProgress = MutableStateFlow<Float?>(null)
-    val updateDownloadProgress: StateFlow<Float?> = _updateDownloadProgress.asStateFlow()
-
-    private val _locations = MutableStateFlow<List<LocationItem>>(emptyList())
-    val locations: StateFlow<List<LocationItem>> = _locations.asStateFlow()
-
-    private val _selectedLocation = MutableStateFlow<LocationItem>(defaultAutoLocation())
-    val selectedLocation: StateFlow<LocationItem> = _selectedLocation.asStateFlow()
-
     init {
+        networkHandoverMonitor.start()
         loadInstalledApps()
         refreshServers()
-        refreshLocations()
         checkForUpdates(silent = true)
-        updateFromGithubCommunity()
     }
 
     fun setLanguage(lang: AppLanguage) {
@@ -171,21 +189,39 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun isEngineSelectable(engineId: String): Boolean =
+        BuildConfig.DEBUG && engineId == "wireguard"
+
+    private fun notifyEngineUnavailable() {
+        viewModelScope.launch {
+            _effects.emit(
+                VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "این موتور هنوز Runtime تأییدشده ندارد و غیرفعال است"
+                    else "This engine has no accepted runtime and remains disabled"
+                )
+            )
+        }
+    }
+
     fun setSelectedEngine(engineId: String) {
+        if (engineId != "auto" && !isEngineSelectable(engineId)) {
+            notifyEngineUnavailable()
+            return
+        }
         _selectedEngineId.value = engineId
         configStore.saveSelectedEngine(engineId)
 
         if (engineId == "auto") {
+            // In auto mode, pick the best scored server from catalog
             val bestServer = _servers.value.firstOrNull()
             if (bestServer != null) {
                 updateActiveConfig(bestServer.payload)
             }
         } else {
-            val match = _servers.value.firstOrNull { it.engineId == engineId }
-                ?: FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
-            if (match != null) {
-                val payload = if (match is ServerItem) match.payload else (match as FreeServerProfile).rawPayload
-                updateActiveConfig(payload)
+            val freeMatch = FreeServerCatalog.getDefaultFreeServers().firstOrNull { it.engineId == engineId }
+            if (freeMatch != null) {
+                updateActiveConfig(freeMatch.rawPayload)
             }
         }
     }
@@ -200,9 +236,70 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         configStore.saveKillSwitchEnabled(enabled)
     }
 
+    /**
+     * Performs an app-owned DNS-over-HTTPS lookup over the active VPN Network.
+     * Android system DNS traffic is not intercepted by this helper.
+     */
+    private suspend fun probeDoH(recordType: DnsRecordType): Boolean = try {
+        resolveDnsOverHttps("example.com", recordType)
+        true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
+    suspend fun resolveDnsOverHttps(
+        hostname: String,
+        recordType: DnsRecordType = DnsRecordType.A
+    ): ByteArray {
+        return VpnNetworkDohClient(
+            context = getApplication(),
+            providerId = _selectedDns.value
+        ).resolve(hostname, recordType)
+    }
+
+    fun runIndependentLeakDiagnostics() {
+        if (_isRunningLeakDiagnostics.value) return
+        viewModelScope.launch {
+            _isRunningLeakDiagnostics.value = true
+            try {
+                _addressFamilyDiagnostics.value = runCatching {
+                    independentLeakTestRunner.checkIpv4AndIpv6()
+                }.getOrElse { error ->
+                    listOf(
+                        AddressFamilyProbe("IPv4", false, errorCode = error.message ?: "VPN_NOT_READY"),
+                        AddressFamilyProbe("IPv6", false, errorCode = error.message ?: "VPN_NOT_READY")
+                    )
+                }
+                _dnsResolverObservation.value = independentLeakTestRunner.observeSystemDnsResolvers()
+                val aSucceeded = probeDoH(DnsRecordType.A)
+                val aaaaSucceeded = probeDoH(DnsRecordType.AAAA)
+                _dohProbeObservation.value = DohProbeObservation(
+                    aQuerySucceeded = aSucceeded,
+                    aaaaQuerySucceeded = aaaaSucceeded,
+                    errorCode = if (aSucceeded && aaaaSucceeded) null else "DOH_PROBE_FAILED"
+                )
+            } finally {
+                _isRunningLeakDiagnostics.value = false
+            }
+        }
+    }
+
+    suspend fun runAddressFamilyDiagnostics(): List<AddressFamilyProbe> =
+        independentLeakTestRunner.checkIpv4AndIpv6()
+
+    /**
+     * Uses a one-time bash.ws test ID and unique system-resolver queries.
+     * An empty resolver list is inconclusive, not proof of no leak.
+     */
+    suspend fun runSystemDnsLeakDiagnostic(): DnsResolverObservation =
+        independentLeakTestRunner.observeSystemDnsResolvers()
+
     fun setDnsProvider(providerId: String) {
-        _selectedDns.value = providerId
-        configStore.saveSelectedDns(providerId)
+        val provider = runCatching { DohDnsResolver.getProvider(providerId) }.getOrNull() ?: return
+        _selectedDns.value = provider.id
+        configStore.saveSelectedDns(provider.id)
     }
 
     fun toggleAppExclusion(packageName: String) {
@@ -238,6 +335,75 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun addSubscription(rawUrl: String) {
+        viewModelScope.launch {
+            try {
+                val normalized = withContext(Dispatchers.IO) {
+                    SubscriptionManager.validateSubscriptionUrl(rawUrl).toExternalForm()
+                }
+                val updated = (_subscriptionUrls.value + normalized).distinct()
+                withContext(Dispatchers.IO) { configStore.saveSubscriptions(updated) }
+                _subscriptionUrls.value = updated
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "اشتراک با موفقیت ذخیره شد" else "Subscription saved"
+                ))
+            } catch (error: Exception) {
+                val reason = error.message ?: "SUBSCRIPTION_URL_INVALID"
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "آدرس اشتراک معتبر نیست: $reason" else "Invalid subscription URL: $reason"
+                ))
+            }
+        }
+    }
+
+    fun removeSubscription(url: String) {
+        viewModelScope.launch {
+            try {
+                val updated = _subscriptionUrls.value.filterNot { it == url }
+                withContext(Dispatchers.IO) { configStore.saveSubscriptions(updated) }
+                _subscriptionUrls.value = updated
+            } catch (error: Exception) {
+                val detail = error.message ?: "storage error"
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "حذف اشتراک ذخیره نشد: $detail"
+                    else "Could not save subscription removal: $detail"
+                ))
+            }
+        }
+    }
+
+    fun setSubscriptionEnabled(url: String, enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                val updated = _disabledSubscriptionUrls.value.toMutableSet().apply {
+                    if (enabled) remove(url) else add(url)
+                }
+                withContext(Dispatchers.IO) { configStore.saveDisabledSubscriptions(updated) }
+                _disabledSubscriptionUrls.value = updated
+            } catch (error: Exception) {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "تغییر وضعیت اشتراک ذخیره نشد"
+                    else "Could not save subscription state"
+                ))
+            }
+        }
+    }
+    fun refreshSubscriptionsNow() {
+        val request = androidx.work.OneTimeWorkRequestBuilder<com.molido.vpn.importer.SubscriptionRefreshWorker>()
+            .setConstraints(
+                androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        androidx.work.WorkManager.getInstance(getApplication()).enqueue(request)
+        viewModelScope.launch {
+            _effects.emit(VpnUiEffect.ShowToast(
+                if (_language.value == AppLanguage.PERSIAN) "به‌روزرسانی اشتراک‌ها در صف اجرا قرار گرفت" else "Subscription refresh queued"
+            ))
+        }
+    }
+
     fun updateFromGithubCommunity() {
         viewModelScope.launch {
             _isFetchingCommunity.value = true
@@ -249,15 +415,15 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 if (configs.isNotEmpty()) {
                     // Update server list with fetched free servers
                     val newServers = configs.mapIndexed { index, conf ->
-                        val ping = (35L + (index * 8)).coerceAtMost(160L)
-                        val measurement = RouteMeasurement(conf.engineId, true, ping, 0.0, 98.0)
+                        // Importing a profile is not a reachability or quality measurement.
+                        val measurement = RouteMeasurement(conf.engineId, false, null, null, null)
                         val score = RouteScorer.score(measurement)
                         ServerItem(
                             id = "github-free-$index",
                             name = conf.name,
                             engineId = conf.engineId,
-                            country = "GitHub Free Node",
-                            flagEmoji = "\uD83C\uDF10",
+                            country = ServerCountryClassifier.resolve(conf.name).nameEn,
+                            flagEmoji = ServerCountryClassifier.resolve(conf.name).flag,
                             payload = conf.payload,
                             measurement = measurement,
                             score = score,
@@ -268,7 +434,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                     val doneMsg = if (_language.value == AppLanguage.PERSIAN) "${configs.size} سرور رایگان جدید از گیت‌هاب با موفقیت اضافه شد" else "Added ${configs.size} free servers from GitHub"
                     _effects.emit(VpnUiEffect.ShowToast(doneMsg))
                 } else {
-                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "سرورهای رایگان کاتالوگ فعال و بروز هستند" else "Default catalog servers are active"
+                    val fallbackMsg = if (_language.value == AppLanguage.PERSIAN) "هیچ پروفایل قابل‌اتصال تأییدشده‌ای پیدا نشد" else "No verified connectable profile was found"
                     _effects.emit(VpnUiEffect.ShowToast(fallbackMsg))
                 }
             } catch (e: Exception) {
@@ -280,20 +446,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshServers() {
-        val freeServers = FreeServerCatalog.getDefaultFreeServers()
-
-        val mockMetrics = mapOf(
-            "free-warp-clean" to RouteMeasurement("warp", true, 22L, 0.0, 99.0, userPriority = 10),
-            "free-warp-global" to RouteMeasurement("warp", true, 28L, 0.0, 98.0, userPriority = 9),
-            "free-xray-1" to RouteMeasurement("xray", true, 38L, 0.0, 97.0, userPriority = 8),
-            "free-xray-2" to RouteMeasurement("xray", true, 44L, 0.1, 96.0, userPriority = 7),
-            "free-xray-3" to RouteMeasurement("xray", true, 52L, 0.0, 95.0, userPriority = 6),
-            "free-amnezia-1" to RouteMeasurement("amnezia", true, 65L, 0.0, 90.0, userPriority = 5)
-        )
-
-        val items = freeServers.map { profile ->
-            val measurement = mockMetrics[profile.id] ?: RouteMeasurement(profile.engineId, true, 70L, 0.0, 92.0)
-            val score = RouteScorer.score(measurement)
+        _servers.value = FreeServerCatalog.getDefaultFreeServers().map { profile ->
+            val measurement = RouteMeasurement(profile.engineId, false, null, null, null)
             ServerItem(
                 id = profile.id,
                 name = profile.name,
@@ -302,65 +456,91 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                 flagEmoji = profile.flagEmoji,
                 payload = profile.rawPayload,
                 measurement = measurement,
-                score = score,
+                score = RouteScorer.score(measurement),
                 isFree = true
             )
-        }.sortedByDescending { it.score.score }
-
-        _servers.value = items
+        }
     }
 
     fun onConnectClicked(context: Context) {
-        val targetEngine: String
-        val targetPayload: ByteArray
-
-        if (_selectedEngineId.value == "auto") {
-            // Smart Connect Auto Mode: pick highest scoring route
-            val bestRoute = _servers.value.firstOrNull() ?: FreeServerCatalog.getDefaultFreeServers()[0].let {
-                ServerItem(it.id, it.name, it.engineId, it.country, it.flagEmoji, it.rawPayload, RouteMeasurement(it.engineId, true, 30L, 0.0, 99.0), RouteScore(it.engineId, 98.0, true))
+        val selected = _selectedEngineId.value
+        val route = if (selected == "auto") _servers.value.firstOrNull { it.score.eligible } else null
+        if (selected == "auto" && route == null) {
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "هیچ مسیر دارای اندازه‌گیری واقعی برای انتخاب هوشمند موجود نیست"
+                    else "No route with real measurements is available for Smart Routing"
+                ))
             }
-            targetEngine = bestRoute.engineId
-            targetPayload = bestRoute.payload.toByteArray(Charsets.UTF_8)
-            _activeConfigText.value = bestRoute.payload
-        } else {
-            targetEngine = _selectedEngineId.value
-            targetPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-        }
-
-        val config = EngineConfiguration(targetPayload)
-        val adapter = coordinator.getAdapter(targetEngine)
-        if (adapter == null) {
-            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("موتور نامعتبر: $targetEngine")) }
             return
         }
 
-        viewModelScope.launch {
-            coordinator.requestConnect(targetEngine, config)
+        val engine = route?.engineId ?: selected
+        if (!isEngineSelectable(engine)) {
+            notifyEngineUnavailable()
+            return
+        }
+        val payload = route?.payload ?: _activeConfigText.value
+        if (payload.isBlank()) {
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "ابتدا پروفایل معتبر VPN را وارد کنید"
+                    else "Import a valid VPN profile first"
+                ))
+            }
+            return
+        }
 
+        val dnsProvider = DohDnsResolver.getProvider(_selectedDns.value)
+        val config = EngineConfiguration(
+            opaquePayload = payload.toByteArray(Charsets.UTF_8),
+            dnsServers = listOf(dnsProvider.primaryIp, dnsProvider.secondaryIp)
+        )
+        if (coordinator.getAdapter(engine) == null) {
+            viewModelScope.launch { _effects.emit(VpnUiEffect.ShowToast("موتور نامعتبر: $engine")) }
+            return
+        }
+        if (route != null) updateActiveConfig(route.payload)
+
+        pendingPermissionRequest = engine to config
+        viewModelScope.launch {
+            coordinator.requestConnect(engine, config)
             val vpnIntent = VpnService.prepare(context)
             if (vpnIntent != null) {
                 _effects.emit(VpnUiEffect.RequestVpnPermission(vpnIntent))
             } else {
-                coordinator.onVpnPermissionGranted(targetEngine, config)
+                pendingPermissionRequest = null
+                coordinator.onVpnPermissionGranted(engine, config)
             }
         }
     }
 
     fun onPermissionResult(isGranted: Boolean) {
-        if (isGranted) {
-            val engine = if (_selectedEngineId.value == "auto") {
-                _servers.value.firstOrNull()?.engineId ?: "warp"
-            } else _selectedEngineId.value
-
-            val configPayload = _activeConfigText.value.toByteArray(Charsets.UTF_8)
-            coordinator.onVpnPermissionGranted(engine, EngineConfiguration(configPayload))
-        } else {
+        val pending = pendingPermissionRequest
+        pendingPermissionRequest = null
+        if (!isGranted) {
             viewModelScope.launch {
-                val msg = if (_language.value == AppLanguage.PERSIAN) "مجوز اتصال VPN رد شد" else "VPN permission denied"
-                _effects.emit(VpnUiEffect.ShowToast(msg))
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN) "مجوز اتصال VPN رد شد" else "VPN permission denied"
+                ))
             }
             coordinator.disconnect()
+            return
         }
+
+        if (pending == null) {
+            viewModelScope.launch {
+                _effects.emit(VpnUiEffect.ShowToast(
+                    if (_language.value == AppLanguage.PERSIAN)
+                        "درخواست اتصال منقضی شده است؛ دوباره تلاش کنید"
+                    else "The connection request expired; please try again"
+                ))
+            }
+            coordinator.disconnect()
+            return
+        }
+        coordinator.onVpnPermissionGranted(pending.first, pending.second)
     }
 
     fun pingAllServers() {
@@ -392,7 +572,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                         val measurement = server.measurement.copy(
                             reachable = true,
                             latencyMillis = ping.latencyMillis,
-                            packetLossPercent = 0.0
+                            packetLossPercent = null,
+                            stabilityPercent = null
                         )
                         server.copy(
                             measurement = measurement,
@@ -402,8 +583,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                         // Mark unreachable / high penalty
                         val measurement = server.measurement.copy(
                             reachable = false,
-                            latencyMillis = 999L,
-                            packetLossPercent = 100.0
+                            latencyMillis = null,
+                            packetLossPercent = null,
+                            stabilityPercent = null
                         )
                         server.copy(
                             measurement = measurement,
@@ -516,177 +698,10 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissUpdateDialog() {
         _updateInfo.value = null
-        _updateDownloadProgress.value = null
     }
 
-    private fun defaultAutoLocation(): LocationItem {
-        return LocationItem(
-            id = "auto",
-            name = "Smart Auto",
-            countryFa = "اتصال هوشمند",
-            countryEn = "Smart Connect",
-            cityFa = "انتخاب خودکار سریع‌ترین لوکیشن",
-            cityEn = "Optimal Route",
-            flagEmoji = "⚡",
-            engineId = "auto",
-            latencyMillis = 24L,
-            isAuto = true,
-            payload = FreeServerCatalog.getDefaultFreeServers().firstOrNull()?.rawPayload ?: ""
-        )
-    }
-
-    fun selectLocation(location: LocationItem) {
-        _selectedLocation.value = location
-        if (location.isAuto) {
-            setSelectedEngine("auto")
-        } else {
-            setSelectedEngine(location.engineId)
-            if (location.payload.isNotBlank()) {
-                updateActiveConfig(location.payload)
-            }
-        }
-        viewModelScope.launch {
-            val label = if (_language.value == AppLanguage.PERSIAN) {
-                "موقعیت ${location.countryFa} انتخاب شد"
-            } else {
-                "Selected ${location.countryEn}"
-            }
-            _effects.emit(VpnUiEffect.ShowToast(label))
-        }
-    }
-
-    fun refreshLocations() {
-        val free = FreeServerCatalog.getDefaultFreeServers()
-        val warpClean = free.firstOrNull { it.id == "free-warp-clean" }?.rawPayload ?: ""
-        val xrayDe = free.firstOrNull { it.id == "free-xray-1" }?.rawPayload ?: ""
-        val xrayNl = free.firstOrNull { it.id == "free-xray-2" }?.rawPayload ?: ""
-        val amneziaFi = free.firstOrNull { it.id == "free-amnezia-1" }?.rawPayload ?: ""
-        val xrayTrojan = free.firstOrNull { it.id == "free-xray-3" }?.rawPayload ?: ""
-
-        val list = listOf(
-            defaultAutoLocation().copy(payload = xrayDe.ifEmpty { warpClean }),
-            LocationItem(
-                id = "loc-de",
-                name = "Germany",
-                countryFa = "آلمان",
-                countryEn = "Germany",
-                cityFa = "فرانکفورت (ضدفیلتر Reality)",
-                cityEn = "Frankfurt (Anti-DPI Reality)",
-                flagEmoji = "\uD83C\uDDE9\uD83C\uDDEA",
-                engineId = "xray",
-                latencyMillis = 36L,
-                payload = xrayDe
-            ),
-            LocationItem(
-                id = "loc-nl",
-                name = "Netherlands",
-                countryFa = "هلند",
-                countryEn = "Netherlands",
-                cityFa = "آمستردام (سرعت بالا)",
-                cityEn = "Amsterdam (High-Speed)",
-                flagEmoji = "\uD83C\uDDF3\uD83C\uDDF1",
-                engineId = "xray",
-                latencyMillis = 42L,
-                payload = xrayNl
-            ),
-            LocationItem(
-                id = "loc-warp",
-                name = "Cloudflare WARP",
-                countryFa = "کلودفلر وارپ",
-                countryEn = "Cloudflare WARP",
-                cityFa = "لبه بدون فیلتر تمیز",
-                cityEn = "Clean Edge IP",
-                flagEmoji = "⚡",
-                engineId = "warp",
-                latencyMillis = 24L,
-                payload = warpClean
-            ),
-            LocationItem(
-                id = "loc-fi",
-                name = "Finland",
-                countryFa = "فنلاند",
-                countryEn = "Finland",
-                cityFa = "هلسینکی (تونل رمزنگاری)",
-                cityEn = "Helsinki (Encrypted)",
-                flagEmoji = "\uD83C\uDDEB\uD83C\uDDEE",
-                engineId = "amnezia",
-                latencyMillis = 52L,
-                payload = amneziaFi
-            ),
-            LocationItem(
-                id = "loc-gb",
-                name = "United Kingdom",
-                countryFa = "انگلستان",
-                countryEn = "United Kingdom",
-                cityFa = "لندن (پینگ پایین)",
-                cityEn = "London (Low Latency)",
-                flagEmoji = "\uD83C\uDDEC\uD83C\uDDE7",
-                engineId = "xray",
-                latencyMillis = 58L,
-                payload = xrayTrojan
-            ),
-            LocationItem(
-                id = "loc-us",
-                name = "United States",
-                countryFa = "ایالات متحده",
-                countryEn = "United States",
-                cityFa = "نیویورک",
-                cityEn = "New York",
-                flagEmoji = "\uD83C\uDDFA\uD83C\uDDF8",
-                engineId = "xray",
-                latencyMillis = 98L,
-                payload = xrayTrojan
-            ),
-            LocationItem(
-                id = "loc-tr",
-                name = "Turkey",
-                countryFa = "ترکیه",
-                countryEn = "Turkey",
-                cityFa = "استانبول (نزدیک‌ترین)",
-                cityEn = "Istanbul (Nearest)",
-                flagEmoji = "\uD83C\uDDF9\uD83C\uDDF7",
-                engineId = "xray",
-                latencyMillis = 46L,
-                payload = xrayDe
-            ),
-            LocationItem(
-                id = "loc-ae",
-                name = "UAE",
-                countryFa = "امارات",
-                countryEn = "United Arab Emirates",
-                cityFa = "دبی",
-                cityEn = "Dubai",
-                flagEmoji = "\uD83C\uDDE6\uD83C\uDDEA",
-                engineId = "warp",
-                latencyMillis = 32L,
-                payload = warpClean
-            )
-        )
-        _locations.value = list
-    }
-
-    fun startInAppUpdate(context: Context, downloadUrl: String) {
-        viewModelScope.launch {
-            _updateDownloadProgress.value = 0.01f
-            val result = UpdateManager.downloadAndInstall(context, downloadUrl) { progress ->
-                _updateDownloadProgress.value = progress
-            }
-            if (result.isFailure) {
-                _updateDownloadProgress.value = null
-                val errMsg = if (_language.value == AppLanguage.PERSIAN) {
-                    "خطا در دانلود به‌روزرسانی: ${result.exceptionOrNull()?.message}"
-                } else {
-                    "Failed to download update: ${result.exceptionOrNull()?.message}"
-                }
-                _effects.emit(VpnUiEffect.ShowToast(errMsg))
-            } else {
-                _updateDownloadProgress.value = null
-                dismissUpdateDialog()
-            }
-        }
-    }
-
-    fun cancelUpdateDownload() {
-        _updateDownloadProgress.value = null
+    override fun onCleared() {
+        networkHandoverMonitor.stop()
+        super.onCleared()
     }
 }

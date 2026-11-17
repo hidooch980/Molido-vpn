@@ -1,19 +1,34 @@
 name: Android CI
 on:
   push:
-    branches: [main]
+    branches: [main, feature/wireguard-gobackend-integration-2026-11]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: android-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review dependency changes for known vulnerabilities
+        id: dependency-review
+        uses: actions/dependency-review-action@v4
+        continue-on-error: true
+        with:
+          fail-on-severity: moderate
+      - name: Dependency graph status
+        if: steps.dependency-review.outcome == 'failure'
+        run: echo "::warning::Dependency review could not complete. Enable Dependency Graph in repository Settings > Security & analysis, then review dependency changes before merge."
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -31,3 +46,19 @@ jobs:
       - name: Run Android lint
         if: always() && !cancelled()
         run: ./gradlew lintDebug --stacktrace
+      # Compile Android instrumentation test sources only. Do not assemble, install,
+      # upload, or distribute any APK; physical Keystore behavior remains unverified.
+      - name: Compile Android instrumentation test sources (no APK)
+        if: success()
+        run: ./gradlew compileDebugAndroidTestKotlin --stacktrace
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-verification-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results*
+            build/reports/
+          if-no-files-found: ignore
+          retention-days: 14

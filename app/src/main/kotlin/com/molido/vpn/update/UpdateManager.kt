@@ -3,18 +3,14 @@ package com.molido.vpn.update
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.core.content.FileProvider
+import com.molido.vpn.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.File
-import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.TimeUnit
 
 data class UpdateInfo(
     val latestVersion: String,
@@ -26,166 +22,111 @@ data class UpdateInfo(
 )
 
 object UpdateManager {
-
-    const val CURRENT_VERSION = "0.3.0"
+    const val CURRENT_VERSION = "5.0.0"
     const val GITHUB_REPO_OWNER = "hidooch980"
     const val GITHUB_REPO_NAME = "Molido-vpn"
     const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
     const val RELEASES_HTML_URL = "https://github.com/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
+    private const val MAX_RELEASE_METADATA_BYTES = 512 * 1024
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
-
-    suspend fun checkUpdate(currentVersion: String = CURRENT_VERSION): UpdateInfo = withContext(Dispatchers.IO) {
-        val url = URL(RELEASES_API_URL)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.connectTimeout = 8000
-        connection.readTimeout = 8000
-        connection.requestMethod = "GET"
-        connection.setRequestProperty("User-Agent", "MolidoVPN/$currentVersion")
-        connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-
-        val responseCode = connection.responseCode
-        if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
-            return@withContext UpdateInfo(
-                latestVersion = currentVersion,
-                currentVersion = currentVersion,
-                hasUpdate = false,
-                releaseNotes = "No newer release found.",
-                downloadUrl = null
-            )
-        }
-
-        if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw java.io.IOException("GitHub release check failed with HTTP $responseCode")
-        }
-
-        val jsonText = connection.inputStream.bufferedReader().use(BufferedReader::readText)
-        val json = JSONObject(jsonText)
-
-        val tagName = json.optString("tag_name", "").removePrefix("v").trim()
-        val latestVer = if (tagName.isNotBlank()) tagName else currentVersion
-        val body = json.optString("body", "")
-        val htmlUrl = json.optString("html_url", RELEASES_HTML_URL)
-        val publishedAt = json.optString("published_at", null)
-
-        var apkDownloadUrl: String? = null
-        val assets = json.optJSONArray("assets")
-        if (assets != null) {
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                val name = asset.optString("name", "")
-                if (name.endsWith(".apk", ignoreCase = true)) {
-                    apkDownloadUrl = asset.optString("browser_download_url", null)
-                    break
+    suspend fun checkUpdate(currentVersion: String = BuildConfig.VERSION_NAME): UpdateInfo =
+        withContext(Dispatchers.IO) {
+            val connection = (URL(RELEASES_API_URL).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8_000
+                readTimeout = 8_000
+                requestMethod = "GET"
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "MolidoVPN/$currentVersion")
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            }
+            try {
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                    return@withContext UpdateInfo(
+                        latestVersion = currentVersion,
+                        currentVersion = currentVersion,
+                        hasUpdate = false,
+                        releaseNotes = "No stable release found.",
+                        downloadUrl = null
+                    )
                 }
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    throw IOException("Update check failed (HTTP $responseCode)")
+                }
+                val length = connection.getHeaderFieldLong("Content-Length", -1L)
+                if (length > MAX_RELEASE_METADATA_BYTES) throw IOException("Release metadata is too large")
+                val jsonString = connection.inputStream.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_RELEASE_METADATA_BYTES) {
+                            throw IOException("Release metadata is too large")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toString(Charsets.UTF_8.name())
+                }
+                val json = JSONObject(jsonString)
+                if (json.optBoolean("draft", true) || json.optBoolean("prerelease", true)) {
+                    throw IOException("Latest GitHub release is not a stable published release")
+                }
+
+                val tagName = json.optString("tag_name", "").trim()
+                val latestVersion = tagName.removePrefix("v").removePrefix("V")
+                if (parseVersion(latestVersion) == null) throw IOException("Release tag has an invalid version")
+                val notes = json.optString("body", "").take(20_000)
+                val publishedAt = json.optString("published_at", "")
+                // Release metadata is not an authenticity proof. Until the signed
+                // manifest, pinned signing identity, artifact digest, anti-rollback,
+                // compatibility and atomic rollback pipeline is implemented, never
+                // expose a direct APK URL from mutable GitHub release metadata.
+                val apkUrl: String? = null
+                UpdateInfo(
+                    latestVersion = latestVersion,
+                    currentVersion = currentVersion,
+                    hasUpdate = isNewerVersion(latestVersion, currentVersion),
+                    releaseNotes = notes,
+                    downloadUrl = apkUrl,
+                    publishedAt = publishedAt
+                )
+            } finally {
+                connection.disconnect()
             }
         }
 
-        val finalDownloadUrl = apkDownloadUrl ?: htmlUrl
-        val hasUpdate = isNewerVersion(latestVer, currentVersion)
-
-        UpdateInfo(
-            latestVersion = latestVer,
-            currentVersion = currentVersion,
-            hasUpdate = hasUpdate,
-            releaseNotes = body,
-            downloadUrl = finalDownloadUrl,
-            publishedAt = publishedAt
-        )
-    }
-
     fun isNewerVersion(latest: String, current: String): Boolean {
-        if (latest.isBlank() || current.isBlank()) return false
-        val latestParts = latest.split('.').mapNotNull { it.filter(Char::isDigit).toIntOrNull() }
-        val currentParts = current.split('.').mapNotNull { it.filter(Char::isDigit).toIntOrNull() }
-
-        val maxLen = maxOf(latestParts.size, currentParts.size)
-        for (i in 0 until maxLen) {
-            val l = latestParts.getOrElse(i) { 0 }
-            val c = currentParts.getOrElse(i) { 0 }
-            if (l > c) return true
-            if (l < c) return false
+        val latestParts = parseVersion(latest) ?: return false
+        val currentParts = parseVersion(current) ?: return false
+        for (i in 0..2) {
+            if (latestParts[i] > currentParts[i]) return true
+            if (latestParts[i] < currentParts[i]) return false
         }
         return false
     }
 
-    suspend fun downloadAndInstall(
-        context: Context,
-        downloadUrl: String,
-        onProgress: (Float) -> Unit
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            if (!downloadUrl.endsWith(".apk", ignoreCase = true) && !downloadUrl.contains("/download/")) {
-                openDownloadPage(context, downloadUrl)
-                return@withContext Result.success(Unit)
-            }
-
-            val request = Request.Builder()
-                .url(downloadUrl)
-                .header("User-Agent", "MolidoVPN/$CURRENT_VERSION")
-                .build()
-
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw java.io.IOException("Download failed with HTTP ${response.code}")
-            }
-
-            val responseBody = response.body ?: throw java.io.IOException("Empty response body")
-            val totalBytes = responseBody.contentLength()
-
-            val outputFile = File(context.cacheDir, "MolidoVPN-update.apk")
-            if (outputFile.exists()) outputFile.delete()
-
-            responseBody.byteStream().use { input ->
-                FileOutputStream(outputFile).use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytesCopied: Long = 0
-                    var read: Int
-
-                    while (input.read(buffer).also { read = it } != -1) {
-                        output.write(buffer, 0, read)
-                        bytesCopied += read
-                        if (totalBytes > 0) {
-                            val progress = (bytesCopied.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-                            onProgress(progress)
-                        }
-                    }
-                    output.flush()
-                }
-            }
-
-            // Launch PackageInstaller via FileProvider
-            withContext(Dispatchers.Main) {
-                installApkFile(context, outputFile)
-            }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    fun installApkFile(context: Context, apkFile: File) {
-        val apkUri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            apkFile
-        )
-
-        val installIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(apkUri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-        }
-
-        context.startActivity(installIntent)
+    private fun parseVersion(value: String): List<Int>? {
+        val normalized = value.trim().removePrefix("v").removePrefix("V")
+        if (!normalized.matches(Regex("\\d+\\.\\d+\\.\\d+"))) return null
+        return normalized.split('.').map { it.toIntOrNull() ?: return null }
     }
 
     fun openDownloadPage(context: Context, downloadUrl: String?) {
-        val targetUrl = downloadUrl ?: RELEASES_HTML_URL
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+        // Direct artifact links are deliberately blocked until cryptographic
+        // verification is implemented. The user may inspect the official release
+        // page manually; this does not install or verify an update.
+        require(downloadUrl == null) { "UNVERIFIED_UPDATE_ARTIFACT_BLOCKED" }
+        val uri = Uri.parse(RELEASES_HTML_URL)
+        require(
+            uri.scheme == "https" &&
+                uri.host == "github.com" &&
+                uri.path == "/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
+        ) { "Untrusted update URL" }
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)

@@ -16,8 +16,6 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      APP_VERSION: "5.0.0"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,21 +23,25 @@ jobs:
       - name: Verify release tag
         shell: bash
         run: |
-          test "${GITHUB_REF_NAME}" = "v${APP_VERSION}" || {
-            echo "::error::This source tree is configured for v${APP_VERSION}; refusing tag ${GITHUB_REF_NAME}"
+          APP_VERSION="$(sed -nE 's/^[[:space:]]*versionName = "([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "$APP_VERSION" && test -n "$VERSION_CODE" || {
+            echo "::error::Unable to read numeric versionName/versionCode from app/build.gradle.kts"
             exit 1
           }
+          MAJOR_VERSION="${APP_VERSION%%.*}"
+          test "$MAJOR_VERSION" -ge 5 && test "$VERSION_CODE" -ge 50000 || {
+            echo "::error::Only MolidoVPN version 5.0.0 and later may be released."
+            exit 1
+          }
+          test "${GITHUB_REF_NAME}" = "v${APP_VERSION}" || {
+            echo "::error::Tag must exactly match app version v${APP_VERSION}; refusing ${GITHUB_REF_NAME}"
+            exit 1
+          }
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
           git fetch origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
             echo "::error::Release tags must point to a commit already merged into main"
-            exit 1
-          }
-          grep -Eq 'versionCode = 50000' app/build.gradle.kts || {
-            echo "::error::Main source is not the MolidoVPN 5.0.0 candidate."
-            exit 1
-          }
-          grep -Eq 'versionName = "5.0.0"' app/build.gradle.kts || {
-            echo "::error::Main source versionName does not match the final 5.0.0 tag."
             exit 1
           }
 

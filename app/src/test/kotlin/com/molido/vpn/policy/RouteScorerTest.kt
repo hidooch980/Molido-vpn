@@ -17,6 +17,16 @@ class RouteScorerTest {
     }
 
     @Test
+    fun routeWithoutMeasurementsIsIneligible() {
+        val score = RouteScorer.score(
+            RouteMeasurement("unmeasured", reachable = true, latencyMillis = null,
+                packetLossPercent = null, stabilityPercent = null)
+        )
+        assertFalse(score.eligible)
+        assertEquals(0.0, score.score, 0.0)
+    }
+
+    @Test
     fun bestRoutePrefersStableLowLossPath() {
         val result = RouteScorer.best(
             listOf(

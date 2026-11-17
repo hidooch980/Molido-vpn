@@ -33,7 +33,9 @@ data class EngineCapabilities(
 data class EngineConfiguration(
     val opaquePayload: ByteArray,
     val allowIpv4: Boolean = true,
-    val allowIpv6: Boolean = true
+    val allowIpv6: Boolean = true,
+    /** Resolver IPs to install in the WireGuard interface; empty preserves profile DNS. */
+    val dnsServers: List<String> = emptyList()
 )
 
 sealed interface ValidationResult {
