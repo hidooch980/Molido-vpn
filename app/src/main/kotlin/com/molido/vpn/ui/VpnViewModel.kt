@@ -112,7 +112,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val networkHandoverMonitor = NetworkHandoverMonitor(
         context = application,
-        onNetworkChanged = { _, _ -> coordinator.verifyActiveTunnelAfterNetworkChange() }
+        onNetworkChanged = { _, _ -> coordinator.verifyActiveTunnelAfterNetworkChange() },
+        onNoUsableNetwork = { coordinator.onPhysicalNetworkLost() }
     )
 
     val connectionState: StateFlow<ConnectionState> = coordinator.state
