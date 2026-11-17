@@ -12,6 +12,7 @@ import com.molido.vpn.data.FreeServerCatalog
 import com.molido.vpn.data.FreeServerProfile
 import com.molido.vpn.data.ServerCountryClassifier
 import com.molido.vpn.dns.DohDnsResolver
+import com.molido.vpn.dns.DohProbeObservation
 import com.molido.vpn.dns.DnsRecordType
 import com.molido.vpn.dns.VpnNetworkDohClient
 import com.molido.vpn.engine.ConnectionCoordinator
@@ -81,6 +82,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _dnsResolverObservation = MutableStateFlow<DnsResolverObservation?>(null)
     val dnsResolverObservation: StateFlow<DnsResolverObservation?> = _dnsResolverObservation.asStateFlow()
+    private val _dohProbeObservation = MutableStateFlow<DohProbeObservation?>(null)
+    val dohProbeObservation: StateFlow<DohProbeObservation?> = _dohProbeObservation.asStateFlow()
 
     private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
@@ -243,6 +246,17 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 _dnsResolverObservation.value = independentLeakTestRunner.observeSystemDnsResolvers()
+                val aSucceeded = runCatching {
+                    resolveDnsOverHttps("example.com", DnsRecordType.A)
+                }.isSuccess
+                val aaaaSucceeded = runCatching {
+                    resolveDnsOverHttps("example.com", DnsRecordType.AAAA)
+                }.isSuccess
+                _dohProbeObservation.value = DohProbeObservation(
+                    aQuerySucceeded = aSucceeded,
+                    aaaaQuerySucceeded = aaaaSucceeded,
+                    errorCode = if (aSucceeded && aaaaSucceeded) null else "DOH_PROBE_FAILED"
+                )
             } finally {
                 _isRunningLeakDiagnostics.value = false
             }
