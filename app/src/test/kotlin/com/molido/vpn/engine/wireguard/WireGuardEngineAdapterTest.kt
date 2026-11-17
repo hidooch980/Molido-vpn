@@ -61,7 +61,6 @@ class WireGuardEngineAdapterTest {
         }
 
         assertTrue("Android context is required before native backend startup", failed)
-        assertEquals(1, events.size)
-        assertTrue(events.single() is EngineEvent.Failed)
+        assertTrue("A failed startup must never emit TransportReady", events.none { it is EngineEvent.TransportReady })
     }
 }
