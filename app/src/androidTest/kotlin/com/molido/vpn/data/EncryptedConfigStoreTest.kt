@@ -77,6 +77,14 @@ class EncryptedConfigStoreTest {
         assertFalse(encryptedUrls.contains("example.com"))
         assertEquals(urls, store.getSubscriptions())
 
+        val disabled = setOf(urls.last())
+        store.saveDisabledSubscriptions(disabled)
+        val encryptedDisabled = preferences.getString("subscriptions_urls_disabled_enc", null)
+        assertNotNull(encryptedDisabled)
+        assertTrue(encryptedDisabled!!.startsWith("enc:v1:"))
+        assertFalse(encryptedDisabled.contains("raw.githubusercontent.com"))
+        assertEquals(disabled, store.getDisabledSubscriptions())
+
         val snapshot = """{"sources":{"test":{"configs":[{"engineId":"wireguard","payload":"private-profile"}]}}}"""
         store.saveSubscriptionSnapshot(snapshot)
         val encryptedSnapshot = preferences.getString("subscription_snapshot_enc", null)
