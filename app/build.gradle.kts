@@ -69,6 +69,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     // Official WireGuard Android userspace backend, pinned Apache-2.0 release.
     implementation("com.wireguard.android:tunnel:1.0.20260102")
+    // Used by the isolated Cloudflare WARP provisioning helper; WARP is not a VPN engine.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
