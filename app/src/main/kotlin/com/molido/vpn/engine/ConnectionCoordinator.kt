@@ -178,9 +178,10 @@ class ConnectionCoordinator(
             cleanupSessionLocked()
             throw cancelled
         } catch (_: Exception) {
-            val cleaned = cleanupSessionLocked()
-            dispatch(ConnectionEvent.Fail(if (cleaned) "EGRESS_VERIFICATION_FAILED" else "TUN_TEARDOWN_FAILED"))
-            return
+            com.molido.vpn.verifier.VerificationResult(
+                success = false,
+                errorMessage = "EGRESS_VERIFICATION_FAILED"
+            )
         }
         if (verification.success && currentSession?.engineId == engineId) {
             val now = System.currentTimeMillis()
@@ -238,7 +239,7 @@ class ConnectionCoordinator(
 
     /**
      * Re-checks the active tunnel after Android reports a validated physical
-     * network handover. A failed probe tears down the session fail-closed.
+     * network handover. A failed probe triggers bounded recovery only after teardown succeeds.
      */
     fun verifyActiveTunnelAfterNetworkChange() {
         scope.launch {
