@@ -58,7 +58,7 @@ class WireGuardEngineAdapter(
         return try {
             // The upstream parser supports the complete WireGuard format,
             // including multiple peer sections; the legacy local parser does not.
-            Config.parse(StringReader(text))
+            Config.parse(StringReader(text).buffered())
             ValidationResult.Valid
         } catch (_: Exception) {
             ValidationResult.Invalid("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
@@ -79,7 +79,7 @@ class WireGuardEngineAdapter(
         require(configuration.opaquePayload.size <= 64 * 1024) { "CONFIG_TOO_LARGE" }
         val configText = String(configuration.opaquePayload, Charsets.UTF_8)
         val parsed = try {
-            Config.parse(StringReader(configText))
+            Config.parse(StringReader(configText).buffered())
         } catch (_: Exception) {
             throw IllegalArgumentException("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
         }
