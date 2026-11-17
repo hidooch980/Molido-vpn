@@ -92,19 +92,24 @@ class WireGuardEngineAdapter(
         }
 
         val backendActive = AtomicBoolean(false)
+        val sessionReference = java.util.concurrent.atomic.AtomicReference<WireGuardSession?>(null)
         val tunnel = object : Tunnel {
             override fun getName(): String = "MolidoVPN-WireGuard"
             override fun onStateChange(newState: State) {
-                backendActive.set(newState == State.UP)
+                val session = sessionReference.get()
+                if (session == null) backendActive.set(newState == State.UP)
+                else session.onBackendStateChange(newState)
             }
         }
-        val session = WireGuardSession(tunnel, backendActive)
+        val session = WireGuardSession(tunnel, backendActive, onEvent)
+        sessionReference.set(session)
         try {
             withContext(Dispatchers.IO) {
                 backend.setState(tunnel, State.UP, parsed)
             }
             check(backend.getState(tunnel) == State.UP) { "WIREGUARD_BACKEND_NOT_UP" }
             backendActive.set(true)
+            session.markStartupComplete()
             onEvent(EngineEvent.TransportReady)
             return session
         } catch (error: LinkageError) {
@@ -146,10 +151,27 @@ class WireGuardEngineAdapter(
 
     inner class WireGuardSession internal constructor(
         internal val tunnel: Tunnel,
-        private val backendActive: AtomicBoolean
+        private val backendActive: AtomicBoolean,
+        private val onEvent: (EngineEvent) -> Unit
     ) : EngineSession {
         override val engineId: String = id
         private val closing = AtomicBoolean(false)
+        private val startupComplete = AtomicBoolean(false)
+
+        internal fun markStartupComplete() {
+            startupComplete.set(true)
+        }
+
+        internal fun onBackendStateChange(newState: State) {
+            if (newState == State.UP) {
+                backendActive.set(true)
+            } else {
+                val wasActive = backendActive.getAndSet(false)
+                if (wasActive && startupComplete.get() && !closing.get()) {
+                    onEvent(EngineEvent.Failed("WIREGUARD_BACKEND_STOPPED", recoverable = true))
+                }
+            }
+        }
 
         internal fun beginClose(): Boolean = closing.compareAndSet(false, true)
         internal fun allowCloseRetry() {
