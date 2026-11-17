@@ -12,6 +12,8 @@ class UpdateManagerTest {
         assertTrue(UpdateManager.isNewerVersion("0.1.1", "0.1.0"))
         assertTrue(UpdateManager.isNewerVersion("1.0.0", "0.1.0"))
         assertTrue(UpdateManager.isNewerVersion("0.10.0", "0.9.0"))
+        assertTrue(UpdateManager.isNewerVersion("v1.0.0", "0.9.9"))
+        assertTrue(UpdateManager.isNewerVersion("1.0.0", "0.99.99"))
     }
 
     @Test
@@ -20,5 +22,8 @@ class UpdateManagerTest {
         assertFalse(UpdateManager.isNewerVersion("0.0.9", "0.1.0"))
         assertFalse(UpdateManager.isNewerVersion("0.0.1", "0.1.0"))
         assertFalse(UpdateManager.isNewerVersion("", "0.1.0"))
+        assertFalse(UpdateManager.isNewerVersion("latest", "1.0.0"))
+        assertFalse(UpdateManager.isNewerVersion("1.0", "0.9.0"))
+        assertFalse(UpdateManager.isNewerVersion("1.0.0-beta", "1.0.0"))
     }
 }
