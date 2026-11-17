@@ -10,6 +10,7 @@ import com.molido.vpn.BuildConfig
 import com.molido.vpn.data.EncryptedConfigStore
 import com.molido.vpn.data.FreeServerCatalog
 import com.molido.vpn.data.FreeServerProfile
+import com.molido.vpn.data.ServerCountryClassifier
 import com.molido.vpn.dns.DohDnsResolver
 import com.molido.vpn.engine.ConnectionCoordinator
 import com.molido.vpn.engine.ConnectionDiagnostics
@@ -239,8 +240,8 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
                             id = "github-free-$index",
                             name = conf.name,
                             engineId = conf.engineId,
-                            country = "GitHub Free Node",
-                            flagEmoji = "\uD83C\uDF10",
+                            country = ServerCountryClassifier.resolve(conf.name).nameEn,
+                            flagEmoji = ServerCountryClassifier.resolve(conf.name).flag,
                             payload = conf.payload,
                             measurement = measurement,
                             score = score,
