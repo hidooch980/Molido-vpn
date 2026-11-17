@@ -54,7 +54,7 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     val configStore = EncryptedConfigStore(application)
 
-    private val wireguardAdapter = WireGuardEngineAdapter()
+    private val wireguardAdapter = WireGuardEngineAdapter(application)
     private val amneziaAdapter = AmneziaWgEngineAdapter()
     private val xrayAdapter = XrayEngineAdapter()
     private val warpAdapter = WarpEngineAdapter()
@@ -68,9 +68,9 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
             xrayAdapter.id to xrayAdapter,
             warpAdapter.id to warpAdapter
         ),
-        // Fail closed: the current app service creates a bare TUN but has no
-        // integrated packet-forwarding backend. Never treat that as a usable VPN.
-        onVpnInterfaceRequested = { _, _ -> false },
+        // WireGuard GoBackend establishes and owns the TUN itself. Other adapters
+        // remain blocked until their own real TUN/packet-forwarding integrations exist.
+        onVpnInterfaceRequested = { engineId, _ -> engineId == "wireguard" },
         onVpnInterfaceTornDown = { }
     )
 
