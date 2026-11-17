@@ -78,19 +78,25 @@ class WireGuardEngineAdapter(
             throw IllegalArgumentException("WIREGUARD_UPSTREAM_CONFIG_REJECTED")
         }
 
+        val backendActive = AtomicBoolean(false)
         val tunnel = object : Tunnel {
             override fun getName(): String = "MolidoVPN-WireGuard"
-            override fun onStateChange(newState: State) = Unit
+            override fun onStateChange(newState: State) {
+                backendActive.set(newState == State.UP)
+            }
         }
-        val session = WireGuardSession(tunnel)
+        val session = WireGuardSession(tunnel, backendActive)
         try {
             withContext(Dispatchers.IO) {
                 backend.setState(tunnel, State.UP, parsed)
             }
             check(backend.getState(tunnel) == State.UP) { "WIREGUARD_BACKEND_NOT_UP" }
-            session.markActive()
+            backendActive.set(true)
             onEvent(EngineEvent.TransportReady)
             return session
+        } catch (error: LinkageError) {
+            onEvent(EngineEvent.Failed("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", recoverable = false))
+            throw IllegalStateException("WIREGUARD_NATIVE_LIBRARY_UNAVAILABLE", error)
         } catch (error: Exception) {
             onEvent(EngineEvent.Failed("WIREGUARD_BACKEND_START_FAILED", recoverable = true))
             throw error
@@ -107,14 +113,13 @@ class WireGuardEngineAdapter(
     }
 
     inner class WireGuardSession internal constructor(
-        internal val tunnel: Tunnel
+        internal val tunnel: Tunnel,
+        private val backendActive: AtomicBoolean
     ) : EngineSession {
         override val engineId: String = id
-        private val active = AtomicBoolean(false)
         private val closing = AtomicBoolean(false)
 
-        internal fun markActive() { active.set(true) }
         internal fun beginClose(): Boolean = closing.compareAndSet(false, true)
-        val isActive: Boolean get() = active.get() && !closing.get()
+        val isActive: Boolean get() = backendActive.get() && !closing.get()
     }
 }
