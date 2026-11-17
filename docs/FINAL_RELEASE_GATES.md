@@ -4,6 +4,18 @@ Last reviewed: 2026-11-17
 
 This file is a release-control record, not a claim that the product is complete.
 
+## Latest branch verification — 2026-11-17
+
+- Feature branch: `feature/wireguard-gobackend-integration-2026-11`.
+- Verified candidate before this documentation refresh: `32eba56b94b3e7d66893e82ffa63a732f8c37bea`.
+- Android CI run `44075393031`: **success** on that exact candidate.
+- CodeQL run `44075393112`: **success** on that exact candidate.
+- Android CI included unit tests, lint, instrumentation-test source compilation (no APK), and dependency review.
+- The branch was observed 0 commits behind `main`, 234 commits ahead, and GitHub reported it mergeable.
+- This documentation update changes the candidate commit. CI and CodeQL must run again on the resulting new head before any merge decision.
+- Repository visibility was still **public** at the last check. The historic signing-key exposure remains unresolved.
+- No APK was assembled, installed, uploaded, or distributed.
+
 ## Verified repository-side work
 
 - Android CI and CodeQL passed on the previously reviewed candidate commit `6370bc6100158d074f77704c1a70c31b230164c3`.
