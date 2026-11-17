@@ -12,12 +12,12 @@ class Hysteria2EngineAdapter : EngineAdapter {
     override val displayName: String = "Hysteria 2 (UDP / QUIC Brutal)"
 
     override val capabilities: EngineCapabilities = EngineCapabilities(
-        supportsIpv4 = true,
-        supportsIpv6 = true,
-        supportsUdp = true,
-        supportsDnsControl = true,
-        supportsPerAppRouting = true,
-        supportsMtuConfiguration = true
+        supportsIpv4 = false,
+        supportsIpv6 = false,
+        supportsUdp = false,
+        supportsDnsControl = false,
+        supportsPerAppRouting = false,
+        supportsMtuConfiguration = false
     )
 
     override suspend fun validate(configuration: EngineConfiguration): ValidationResult {
