@@ -315,6 +315,7 @@ fun MainAppScreen(viewModel: VpnViewModel) {
                 when (selectedTab) {
                     0 -> ConnectTab(
                         strings = strings, connectionState = connectionState, diagnostics = diagnostics,
+                        isPersian = language == AppLanguage.PERSIAN,
                         killSwitchEnabled = killSwitchEnabled,
                         selectedEngine = selectedEngineId,
                         onSelectEngine = { viewModel.setSelectedEngine(it) },
@@ -378,6 +379,7 @@ fun ConnectTab(
     strings: AppStrings,
     connectionState: ConnectionState,
     diagnostics: ConnectionDiagnostics,
+    isPersian: Boolean,
     killSwitchEnabled: Boolean,
     selectedEngine: String,
     onSelectEngine: (String) -> Unit,
@@ -473,7 +475,15 @@ fun ConnectTab(
                     Text(if (strings.appName == "MolidoVPN") "وضعیت لایه‌های امنیتی" else "SECURITY LAYERS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     DashboardSecurityRow("DNS Leak Protection", if (isVerified) "نیازمند تست نشت" else "در انتظار تونل", isVerified)
                     DashboardSecurityRow("IPv6 Protection", if (isVerified) "نیازمند تست IPv6" else "در انتظار تونل", isVerified)
-                    DashboardSecurityRow("Android Lockdown", if (killSwitchEnabled) "یادآور روشن است؛ وضعیت قفل اندروید تأیید نشده" else "یادآور خاموش است؛ وضعیت قفل اندروید نامشخص", needsTest = true)
+                    DashboardSecurityRow(
+                        if (isPersian) "قفل سیستمی اندروید" else "Android Lockdown",
+                        if (isPersian) {
+                            if (killSwitchEnabled) "یادآور روشن است؛ وضعیت قفل اندروید تأیید نشده" else "یادآور خاموش است؛ وضعیت قفل اندروید نامشخص"
+                        } else {
+                            if (killSwitchEnabled) "Reminder enabled; system state unverified" else "Reminder off; system state unknown"
+                        },
+                        needsTest = true
+                    )
                 }
             }
         }
