@@ -86,7 +86,10 @@ class SubscriptionRefreshWorker(
                 val freshIds = successfulSourceIds
                 (0 until previousSources.length()).forEach { index ->
                     previousSources.optJSONObject(index)?.let { old ->
-                        if (old.optString("sourceId") !in freshIds) put(old)
+                        val oldId = old.optString("sourceId")
+                        if (oldId !in freshIds &&
+                            (!oldId.startsWith("custom-") || oldId in activeCustomSourceIds)
+                        ) put(old)
                     }
                 }
                 reports.forEach { report ->
