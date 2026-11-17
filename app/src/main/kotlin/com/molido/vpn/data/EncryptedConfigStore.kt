@@ -129,11 +129,74 @@ class EncryptedConfigStore(context: Context) {
 
     @Synchronized
     fun saveSubscriptions(urls: List<String>) {
-        prefs.edit().putStringSet(KEY_SUBSCRIPTIONS, urls.toSet()).apply()
+        val normalized = urls.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val encrypted = encryptText(normalized.joinToString("\\n"), SUBSCRIPTIONS_AAD)
+        check(prefs.edit()
+            .putString(KEY_SUBSCRIPTIONS_ENCRYPTED, encrypted)
+            .remove(KEY_SUBSCRIPTIONS)
+            .commit()) { "SUBSCRIPTION_STORAGE_FAILED" }
     }
 
-    fun getSubscriptions(): List<String> =
-        prefs.getStringSet(KEY_SUBSCRIPTIONS, emptySet())?.toList() ?: emptyList()
+    @Synchronized
+    fun getSubscriptions(): List<String> {
+        val encrypted = prefs.getString(KEY_SUBSCRIPTIONS_ENCRYPTED, null)
+        if (encrypted != null) {
+            return try {
+                decryptText(encrypted, SUBSCRIPTIONS_AAD)
+                    .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+            } catch (_: Exception) {
+                prefs.edit().remove(KEY_SUBSCRIPTIONS_ENCRYPTED).commit()
+                emptyList()
+            }
+        }
+        // Migrate legacy plaintext URL set once, then remove it.
+        val legacy = try { prefs.getStringSet(KEY_SUBSCRIPTIONS, emptySet())?.toList().orEmpty() }
+        catch (_: ClassCastException) { emptyList() }
+        if (legacy.isNotEmpty()) saveSubscriptions(legacy)
+        return legacy
+    }
+
+    @Synchronized
+    fun saveSubscriptionSnapshot(snapshotJson: String) {
+        require(snapshotJson.length <= MAX_SNAPSHOT_CHARS) { "SUBSCRIPTION_SNAPSHOT_TOO_LARGE" }
+        val encrypted = encryptText(snapshotJson, SNAPSHOT_AAD)
+        check(prefs.edit().putString(KEY_SUBSCRIPTION_SNAPSHOT, encrypted).commit()) {
+            "SUBSCRIPTION_SNAPSHOT_STORAGE_FAILED"
+        }
+    }
+
+    @Synchronized
+    fun getSubscriptionSnapshot(): String? {
+        val stored = prefs.getString(KEY_SUBSCRIPTION_SNAPSHOT, null) ?: return null
+        return try {
+            decryptText(stored, SNAPSHOT_AAD)
+        } catch (_: Exception) {
+            prefs.edit().remove(KEY_SUBSCRIPTION_SNAPSHOT).commit()
+            null
+        }
+    }
+
+    private fun encryptText(value: String, aad: ByteArray): String {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        cipher.updateAAD(aad)
+        return ENCRYPTED_PREFIX + Base64.encodeToString(
+            cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)),
+            Base64.NO_WRAP
+        )
+    }
+
+    private fun decryptText(stored: String, aad: ByteArray): String {
+        require(stored.startsWith(ENCRYPTED_PREFIX)) { "ENCRYPTED_VALUE_INVALID" }
+        val payload = Base64.decode(stored.removePrefix(ENCRYPTED_PREFIX), Base64.NO_WRAP)
+        require(payload.size > GCM_IV_LENGTH + GCM_TAG_LENGTH_BYTES) { "ENCRYPTED_VALUE_INVALID" }
+        val iv = payload.copyOfRange(0, GCM_IV_LENGTH)
+        val encrypted = payload.copyOfRange(GCM_IV_LENGTH, payload.size)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+        cipher.updateAAD(aad)
+        return String(cipher.doFinal(encrypted), Charsets.UTF_8)
+    }
 
     companion object {
         private const val PREFS_NAME = "molido_secure_config"
@@ -143,6 +206,9 @@ class EncryptedConfigStore(context: Context) {
         private const val KEY_SELECTED_DNS = "selected_dns_provider"
         private const val KEY_SPLIT_APPS = "split_tunnel_apps"
         private const val KEY_SUBSCRIPTIONS = "subscriptions_urls"
+        private const val KEY_SUBSCRIPTIONS_ENCRYPTED = "subscriptions_urls_enc"
+        private const val KEY_SUBSCRIPTION_SNAPSHOT = "subscription_snapshot_enc"
+        private const val MAX_SNAPSHOT_CHARS = 2 * 1024 * 1024
         private const val KEY_ALIAS = "molido.vpn.profile.aes256gcm.v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
@@ -151,5 +217,7 @@ class EncryptedConfigStore(context: Context) {
         private const val GCM_TAG_LENGTH_BITS = 128
         private const val GCM_TAG_LENGTH_BYTES = GCM_TAG_LENGTH_BITS / 8
         private val AAD = "MolidoVPN/active-profile/v1".toByteArray(Charsets.UTF_8)
+        private val SUBSCRIPTIONS_AAD = "MolidoVPN/subscription-urls/v1".toByteArray(Charsets.UTF_8)
+        private val SNAPSHOT_AAD = "MolidoVPN/subscription-snapshot/v1".toByteArray(Charsets.UTF_8)
     }
 }
