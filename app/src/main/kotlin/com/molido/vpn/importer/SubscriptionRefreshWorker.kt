@@ -69,8 +69,11 @@ class SubscriptionRefreshWorker(
                 // Replace a source only after that same source fetched and parsed successfully.
                 // Removed custom feeds are dropped; disabled or temporarily failing feeds retain
                 // their last-known-good profiles without being fetched.
-                sourceId !in successfulSourceIds &&
-                    (sourceId == null || !sourceId.startsWith("custom-") || sourceId in activeCustomSourceIds)
+                SubscriptionSnapshotPolicy.shouldRetainPreviousConfig(
+                    sourceId = sourceId,
+                    successfulSourceIds = successfulSourceIds,
+                    activeCustomSourceIds = activeCustomSourceIds
+                )
             }
         }
         val configs = (retainedLastGood + freshConfigs).distinctBy { it.optString("payload") }
