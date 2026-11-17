@@ -13,6 +13,7 @@ import com.molido.vpn.data.EncryptedConfigStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import java.security.MessageDigest
 
 /**
  * Refreshes configured and curated feeds without replacing the last-good snapshot
@@ -28,9 +29,14 @@ class SubscriptionRefreshWorker(
         val reports = mutableListOf<SubscriptionFetchReport>()
         var failures = 0
 
-        for ((index, url) in store.getSubscriptions().filterNot { it in store.getDisabledSubscriptions() }.withIndex()) {
+        val configuredUrls = store.getSubscriptions()
+        val disabledUrls = store.getDisabledSubscriptions()
+        val enabledCustomUrls = configuredUrls.filterNot { it in disabledUrls }
+        val activeCustomSourceIds = configuredUrls.map(::customSourceId).toSet()
+
+        for (url in enabledCustomUrls) {
             try {
-                reports += SubscriptionManager.fetchSubscriptionReport(url, "manual-$index")
+                reports += SubscriptionManager.fetchSubscriptionReport(url, customSourceId(url))
             } catch (_: Exception) {
                 failures++
             }
@@ -44,7 +50,7 @@ class SubscriptionRefreshWorker(
             }
         }
 
-        val configs = reports.flatMap { report ->
+        val freshConfigs = reports.flatMap { report ->
             report.configs.map { config ->
                 JSONObject()
                     .put("engineId", config.engineId)
@@ -52,15 +58,37 @@ class SubscriptionRefreshWorker(
                     .put("payload", config.payload)
                     .put("sourceId", report.sourceId ?: JSONObject.NULL)
             }
-        }.distinctBy { it.optString("payload") }
+        }
+        val successfulSourceIds = reports.mapNotNull { it.sourceId }.toSet()
+        val previousSnapshot = store.getSubscriptionSnapshot()
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+        val previousConfigs = previousSnapshot?.optJSONArray("configs") ?: JSONArray()
+        val retainedLastGood = (0 until previousConfigs.length()).mapNotNull { index ->
+            previousConfigs.optJSONObject(index)?.takeIf { old ->
+                val sourceId = old.optString("sourceId").takeUnless { it.isBlank() || it == "null" }
+                // Replace a source only after that same source fetched and parsed successfully.
+                // Removed custom feeds are dropped; disabled or temporarily failing feeds retain
+                // their last-known-good profiles without being fetched.
+                sourceId !in successfulSourceIds &&
+                    (sourceId == null || !sourceId.startsWith("custom-") || sourceId in activeCustomSourceIds)
+            }
+        }
+        val configs = (retainedLastGood + freshConfigs).distinctBy { it.optString("payload") }
 
-        if (configs.isEmpty()) {
+        if (freshConfigs.isEmpty()) {
             // Keep the previous encrypted snapshot intact when every feed fails.
             return if (failures > 0) Result.retry() else Result.success()
         }
 
         return try {
             val sourceJson = JSONArray().apply {
+                val previousSources = previousSnapshot?.optJSONArray("sources") ?: JSONArray()
+                val freshIds = successfulSourceIds
+                (0 until previousSources.length()).forEach { index ->
+                    previousSources.optJSONObject(index)?.let { old ->
+                        if (old.optString("sourceId") !in freshIds) put(old)
+                    }
+                }
                 reports.forEach { report ->
                     put(
                         JSONObject()
@@ -84,6 +112,14 @@ class SubscriptionRefreshWorker(
             Result.retry()
         }
     }
+}
+
+private fun customSourceId(url: String): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest(url.toByteArray(Charsets.UTF_8))
+        .take(8)
+        .joinToString("") { "%02x".format(it) }
+    return "custom-$digest"
 }
 
 object SubscriptionRefreshScheduler {
